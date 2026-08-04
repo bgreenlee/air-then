@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: clearskies
+      POSTGRES_USER: clearskies
+      POSTGRES_PASSWORD: clearskies
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d:ro
+  api:
+    build: ./api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      DATABASE_URL: postgresql://clearskies:clearskies@postgres:5432/clearskies
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+volumes:
+  postgres_data:

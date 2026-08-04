@@ -1,0 +1,4 @@
+polars==1.38.1
+duckdb==1.4.4
+psycopg[binary]==3.3.3
+requests==2.32.5

@@ -1,0 +1,31 @@
+name: Refresh EPA AQI
+
+on:
+  schedule:
+    - cron: "17 13 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aqi-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r importer/requirements.txt
+      - name: Upsert current-year CBSA AQI
+        run: python importer/import_aqi.py --kind cbsa --year "$(date -u +%Y)"
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+      - name: Upsert current-year county AQI
+        run: python importer/import_aqi.py --kind county --year "$(date -u +%Y)"
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
