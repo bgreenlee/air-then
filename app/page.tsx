@@ -15,10 +15,10 @@ const cbsas = [
   [29.7604, -95.3698, "Houston–The Woodlands–Sugar Land CBSA"], [33.749, -84.388, "Atlanta–Sandy Springs–Alpharetta CBSA"],
   [37.7749, -122.4194, "San Francisco–Oakland–Berkeley CBSA"], [42.3601, -71.0589, "Boston–Cambridge–Newton CBSA"],
 ] as const;
-// AQI coverage is published by calendar year. Use UTC so the Worker render and
-// browser hydration agree even when they run in different time zones.
-const currentYear = new Date().getUTCFullYear();
-const today = new Date().toISOString().slice(0, 10);
+// Keep the initial render deterministic: the Cloudflare Worker may expose an
+// epoch clock during SSR, while the browser has the actual current date.
+const currentYear = 2026;
+const today = "2026-08-05";
 
 function bucket(aqi: number | null) {
   if (aqi === null) return "missing";
