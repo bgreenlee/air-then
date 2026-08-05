@@ -5,8 +5,12 @@ on:
     - cron: "17 13 * * *"
   workflow_dispatch:
     inputs:
-      year:
-        description: "EPA calendar year to import (blank = current year)"
+      start_year:
+        description: "First EPA calendar year to import (blank = current year)"
+        required: false
+        type: string
+      end_year:
+        description: "Last EPA calendar year to import (blank = start year)"
         required: false
         type: string
       load_reference_data:
@@ -36,15 +40,17 @@ jobs:
         run: python importer/import_reference.py --year 2025
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
-      - name: Upsert current-year CBSA AQI
+      - name: Upsert EPA AQI year range
         run: |
-          YEAR="${{ inputs.year }}"
-          python importer/import_aqi.py --kind cbsa --year "${YEAR:-$(date -u +%Y)}"
-        env:
-          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
-      - name: Upsert current-year county AQI
-        run: |
-          YEAR="${{ inputs.year }}"
-          python importer/import_aqi.py --kind county --year "${YEAR:-$(date -u +%Y)}"
+          START_YEAR="${{ inputs.start_year }}"
+          END_YEAR="${{ inputs.end_year }}"
+          START_YEAR="${START_YEAR:-$(date -u +%Y)}"
+          END_YEAR="${END_YEAR:-$START_YEAR}"
+          if [ "$START_YEAR" -gt "$END_YEAR" ]; then echo "start_year must not exceed end_year"; exit 1; fi
+          for YEAR in $(seq "$START_YEAR" "$END_YEAR"); do
+            echo "Importing $YEAR"
+            python importer/import_aqi.py --kind cbsa --year "$YEAR"
+            python importer/import_aqi.py --kind county --year "$YEAR"
+          done
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}

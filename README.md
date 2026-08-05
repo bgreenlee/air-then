@@ -21,6 +21,6 @@ Load real local data with `python3 -m venv .venv && .venv/bin/pip install -r imp
 
 ## Cloudflare + Supabase deployment
 
-In GitHub Actions, add `SUPABASE_DB_URL` (a direct SSL connection string) and `CLOUDFLARE_API_TOKEN` (Workers edit permission). Run **Refresh EPA AQI** with `load_reference_data` selected. Pushing to `main` applies pending migrations, then deploys the Worker; the daily workflow refreshes current-year EPA CBSA and county data at 13:17 UTC.
+In GitHub Actions, add `SUPABASE_DB_URL` (a Session pooler SSL connection string) and `CLOUDFLARE_API_TOKEN` (Workers edit permission). Run **Refresh EPA AQI** with `load_reference_data` selected. For an initial backfill, enter `2017` through `2026` in its year-range fields. Pushing to `main` applies pending migrations, then deploys the Worker; the daily workflow refreshes current-year EPA CBSA and county data at 13:17 UTC.
 
 To apply the same tracked migrations from a local terminal, run `DATABASE_URL='postgresql://…?sslmode=require' bash scripts/migrate.sh`. Each migration runs once and is recorded in `clearskies_migrations`.
