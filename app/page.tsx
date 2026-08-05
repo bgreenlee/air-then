@@ -49,6 +49,16 @@ function dailyGradient(days: Day[]) {
   }).join(", ")})`;
 }
 
+function fullYearDays(year: number, reportedDays: Day[]) {
+  const byDate = new Map(reportedDays.map((day) => [day.date, day]));
+  const dates: Day[] = [];
+  for (let date = new Date(year, 0, 1); date.getFullYear() === year; date.setDate(date.getDate() + 1)) {
+    const key = date.toISOString().slice(0, 10);
+    dates.push(byDate.get(key) ?? { date: key, aqi: null, pollutant: null });
+  }
+  return dates;
+}
+
 function nearestCbsa(latitude: number, longitude: number) {
   return cbsas.reduce((nearest, cbsa) => {
     const distance = (cbsa[0] - latitude) ** 2 + (cbsa[1] - longitude) ** 2;
@@ -139,7 +149,7 @@ export default function Home() {
       <div className="result-head"><div><p className="eyebrow">Search result</p><h2>{displayArea(dataArea)}</h2><p className="subtle">Metro area · EPA daily AQI aggregate</p><p className="resolution-note"><b>Why this source?</b> {isCurrentLocation ? "Your current location resolves to the nearest EPA metro area." : "This result has strong daily monitoring coverage."}</p></div><div className="year-controls"><button onClick={() => setYear(year - 1)} aria-label="Previous year">←</button><strong>{year}</strong><button onClick={() => setYear(year + 1)} disabled={year >= currentYear} aria-label="Next year">→</button></div></div>
       <div className="metrics"><Metric value={stats.median} label="Median AQI" tone="good"/><Metric value={stats.max} label="Maximum AQI" tone="sensitive"/><Metric value={stats.gt50} label="Days above 50" tone="moderate"/><Metric value={`${stats.complete}%`} label="Data complete" tone="neutral"/></div>
       <div className="chart-card"><div className="chart-heading"><div><h3>Daily AQI calendar</h3><p>Each square is one day. Higher values mean greater health concern.</p></div></div><div className="calendar-wrap"><div className="month-labels">{months.map(m => <span key={m}>{m}</span>)}</div><div className="calendar" aria-label={`Daily AQI calendar for ${year}`}>{cells.map((d, i) => <div key={i} role={d ? "img" : undefined} tabIndex={d ? 0 : undefined} aria-label={d ? `${d.date}: ${d.aqi === null ? "No AQI reported" : `AQI ${d.aqi}, ${category(d.aqi)}, ${d.pollutant}`}` : undefined} onMouseEnter={(event) => d && setTooltip({ day: d, x: event.clientX, y: event.clientY })} onMouseMove={(event) => d && setTooltip({ day: d, x: event.clientX, y: event.clientY })} onMouseLeave={() => setTooltip(null)} onFocus={(event) => { if (d) { const box = event.currentTarget.getBoundingClientRect(); setTooltip({ day: d, x: box.left + box.width / 2, y: box.bottom }); } }} onBlur={() => setTooltip(null)} className={`day ${d ? bucket(d.aqi) : "empty"}`}/>)}</div></div><div className="legend"><span>Lower impact</span>{["good","moderate","sensitive","unhealthy","very-unhealthy","hazardous"].map(k => <i key={k} className={k}/>) }<span>Higher impact</span><i className="missing"/><span>No data</span></div></div>
-      <div className="history-card"><div><p className="eyebrow">Historical view</p><h3>Every available year, at a glance.</h3><p>Each strip condenses a full year into daily AQI. Select a year to inspect it above.</p></div><div className="history-timeline"><div className="history-months" aria-hidden="true">{months.map(month => <span key={month}>{month}</span>)}</div><div className="year-strips">{historicalYears.map(y => { const row = historicalDays[y]; return <button className={y === year ? "year-strip selected" : "year-strip"} onClick={() => setYear(y)} key={y} aria-label={`Show AQI calendar for ${y}`}><b>{y}</b><span className="year-ramp" style={row ? { backgroundImage: dailyGradient(row) } : undefined}/><em>{y === year ? "Viewing" : ""}</em></button>; })}</div></div></div>
+      <div className="history-card"><div><p className="eyebrow">Historical view</p><h3>Every available year, at a glance.</h3><p>Each strip condenses a full year into daily AQI. Select a year to inspect it above.</p></div><div className="history-timeline"><div className="history-months" aria-hidden="true">{months.map(month => <span key={month}>{month}</span>)}</div><div className="year-strips">{historicalYears.map(y => { const row = historicalDays[y]; return <button className={y === year ? "year-strip selected" : "year-strip"} onClick={() => setYear(y)} key={y} aria-label={`Show AQI calendar for ${y}`}><b>{y}</b><span className="year-ramp" style={row ? { backgroundImage: dailyGradient(fullYearDays(y, row)) } : undefined}/><em>{y === year ? "Viewing" : ""}</em></button>; })}</div></div></div>
       <div className="two-col single"><article><p className="eyebrow">Annual summary</p><h3>Mostly good air, with summer ozone peaks.</h3><p>PM2.5 was the dominant pollutant for most days. Ozone led during the warmer months, including the year’s highest reading.</p></article></div>
     </section>
     <footer><span>Clear Skies is built from EPA AirData bulk files and Census geographic references.</span><span>Open source · <a href="https://www.epa.gov/outdoor-air-quality-data" target="_blank" rel="noreferrer">EPA AirData ↗</a></span></footer>
