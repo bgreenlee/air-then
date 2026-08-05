@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Day = { date: string; aqi: number | null; pollutant: string | null };
 
@@ -71,15 +71,38 @@ export default function Home() {
   const [query, setQuery] = useState("Seattle, WA");
   const [year, setYear] = useState(currentYear);
   const [locationStatus, setLocationStatus] = useState("");
-  const [dataArea, setDataArea] = useState("Seattle–Tacoma–Bellevue CBSA");
+  const [dataArea, setDataArea] = useState("Loading metro area…");
+  const [areaId, setAreaId] = useState<string | null>(null);
   const [isCurrentLocation, setIsCurrentLocation] = useState(false);
   const [tooltip, setTooltip] = useState<{ day: Day; x: number; y: number } | null>(null);
-  const days = useMemo(() => demoDays(year), [year]);
+  const [days, setDays] = useState<Day[]>([]);
+
+  async function resolveLocation(search: string, coordinates?: { lat: number; lon: number }) {
+    const params = coordinates ? new URLSearchParams({ lat: String(coordinates.lat), lon: String(coordinates.lon) }) : new URLSearchParams({ q: search });
+    const response = await fetch(`/api/locations/search?${params}`);
+    const payload = await response.json();
+    const result = payload.results?.[0];
+    if (!result) throw new Error("No metro-area AQI record was found for that location.");
+    setDataArea(result.label); setAreaId(result.area_id); setQuery(result.label);
+  }
+
+  useEffect(() => { void resolveLocation("Seattle").catch(() => { setDataArea("Seattle–Tacoma–Bellevue"); setDays(demoDays(currentYear)); }); }, []);
+  useEffect(() => {
+    if (!areaId) return;
+    void fetch(`/api/aqi/history?location_id=${encodeURIComponent(areaId)}&year=${year}`)
+      .then(response => response.ok ? response.json() : Promise.reject(new Error("AQI history unavailable")))
+      .then(payload => setDays(payload.days))
+      .catch(() => setDays([]));
+  }, [areaId, year]);
   const stats = useMemo(() => {
     const values = days.flatMap((d) => d.aqi === null ? [] : [d.aqi]).sort((a,b) => a-b);
-    return { median: values[Math.floor(values.length / 2)], max: Math.max(...values), gt50: values.filter(x => x > 50).length, gt100: values.filter(x => x > 100).length, complete: Math.round(values.length / days.length * 100) };
+    return { median: values.length ? values[Math.floor(values.length / 2)] : "—", max: values.length ? Math.max(...values) : "—", gt50: values.filter(x => x > 50).length, gt100: values.filter(x => x > 100).length, complete: Math.round(values.length / (new Date(year, 1, 29).getMonth() === 1 ? 366 : 365) * 100) };
   }, [days]);
-  const cells = Array.from({ length: 371 }, (_, index) => days[index] ?? null);
+  const dayByDate = new Map(days.map(day => [day.date, day]));
+  const cells = Array.from({ length: 371 }, (_, index) => {
+    const date = new Date(year, 0, index + 1);
+    return date.getFullYear() === year ? dayByDate.get(date.toISOString().slice(0, 10)) ?? { date: date.toISOString().slice(0, 10), aqi: null, pollutant: null } : null;
+  });
   const historicalYears = Array.from({ length: 10 }, (_, index) => currentYear - 9 + index);
 
   return <main>
@@ -87,11 +110,11 @@ export default function Home() {
     <section className="hero" id="top">
       <p className="eyebrow">Historical U.S. Air Quality</p>
       <p className="intro">Search a city, ZIP code, or your current location to explore daily AQI records.</p>
-      <form className="search" onSubmit={(e) => { e.preventDefault(); const cbsa = resolveCbsa(query); setDataArea(cbsa); setQuery(displayArea(cbsa)); setIsCurrentLocation(false); setLocationStatus(""); }}>
+      <form className="search" onSubmit={(e) => { e.preventDefault(); setLocationStatus("Resolving location…"); void resolveLocation(query).then(() => { setIsCurrentLocation(false); setLocationStatus(""); }).catch(error => setLocationStatus(error.message)); }}>
         <span>⌕</span><input aria-label="Search city or ZIP code" value={query} onChange={e => setQuery(e.target.value)} placeholder="City or ZIP code"/><button className="locate" type="button" aria-label="Use my current location" title="Use my current location" onClick={() => {
           if (!navigator.geolocation) { setLocationStatus("Location isn’t supported by this browser."); return; }
           setLocationStatus("Finding your location…");
-          navigator.geolocation.getCurrentPosition(({ coords }) => { const cbsa = nearestCbsa(coords.latitude, coords.longitude); setQuery(displayArea(cbsa)); setDataArea(cbsa); setIsCurrentLocation(true); setLocationStatus(`Location found — showing ${displayArea(cbsa)}.`); }, () => setLocationStatus("We couldn’t access your location. Search by city or ZIP instead."), { enableHighAccuracy: false, timeout: 10000 });
+          navigator.geolocation.getCurrentPosition(({ coords }) => { void resolveLocation("", { lat: coords.latitude, lon: coords.longitude }).then(() => { setIsCurrentLocation(true); setLocationStatus("Location found — showing the nearest EPA metro area."); }).catch(() => setLocationStatus("We couldn’t resolve local AQI coverage. Search by city or ZIP instead.")); }, () => setLocationStatus("We couldn’t access your location. Search by city or ZIP instead."), { enableHighAccuracy: false, timeout: 10000 });
         }}>◎</button><button>Explore AQI</button>
       </form>
       <p className="hint">{locationStatus || <>Try <button onClick={() => { setQuery("Seattle–Tacoma–Bellevue CBSA"); setDataArea("Seattle–Tacoma–Bellevue CBSA"); }}>98101</button>, <button onClick={() => { setQuery("Winthrop, WA"); }}>Winthrop, WA</button>, or any U.S. city</>}</p>
