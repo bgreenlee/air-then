@@ -12,15 +12,15 @@ SQL
 
 for migration in supabase/migrations/*.sql; do
   filename="$(basename "$migration")"
+  escaped_filename="${filename//\'/\'\'}"
   applied="$(psql "$DATABASE_URL" --tuples-only --no-align --set ON_ERROR_STOP=1 \
-    --set migration_name="$filename" \
-    --command "SELECT EXISTS (SELECT 1 FROM clearskies_migrations WHERE filename = :'migration_name')")"
+    --command "SELECT EXISTS (SELECT 1 FROM clearskies_migrations WHERE filename = '$escaped_filename')")"
   if [ "$applied" = "t" ]; then
     echo "Already applied: $filename"
     continue
   fi
   echo "Applying: $filename"
   psql "$DATABASE_URL" --set ON_ERROR_STOP=1 --file "$migration"
-  psql "$DATABASE_URL" --set ON_ERROR_STOP=1 --set migration_name="$filename" \
-    --command "INSERT INTO clearskies_migrations (filename) VALUES (:'migration_name')"
+  psql "$DATABASE_URL" --set ON_ERROR_STOP=1 \
+    --command "INSERT INTO clearskies_migrations (filename) VALUES ('$escaped_filename')"
 done
