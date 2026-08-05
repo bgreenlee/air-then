@@ -35,11 +35,6 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r importer/requirements.txt
-      - name: Load Census reference geography
-        if: ${{ inputs.load_reference_data }}
-        run: python importer/import_reference.py --year 2025
-        env:
-          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
       - name: Upsert EPA AQI year range
         run: |
           START_YEAR="${{ inputs.start_year }}"
@@ -52,5 +47,10 @@ jobs:
             python importer/import_aqi.py --kind cbsa --year "$YEAR"
             python importer/import_aqi.py --kind county --year "$YEAR"
           done
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+      - name: Load Census reference geography
+        if: ${{ inputs.load_reference_data }}
+        run: python importer/import_reference.py --year 2025
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
