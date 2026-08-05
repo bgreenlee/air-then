@@ -40,10 +40,9 @@ const worker = {
       await client.connect();
       try {
         const result = lat && lon
-          ? await client.query(`WITH point AS (SELECT ST_SetSRID(ST_MakePoint($1,$2),4326) AS centroid)
-              SELECT c.id::text AS area_id,c.name,c.geoid FROM geographic_areas c,point
+          ? await client.query(`SELECT c.id::text AS area_id,c.name,c.geoid FROM geographic_areas c
               WHERE c.type='cbsa' AND c.centroid IS NOT NULL AND EXISTS (SELECT 1 FROM daily_aqi d WHERE d.area_id=c.id)
-              ORDER BY c.centroid <-> point.centroid LIMIT 1`, [Number(lon), Number(lat)])
+              ORDER BY c.centroid <-> ST_SetSRID(ST_MakePoint($1,$2),4326) LIMIT 1`, [Number(lon), Number(lat)])
           : /^\d{5}$/.test(query)
             ? await client.query(`WITH zip AS (
                 SELECT centroid FROM geographic_areas WHERE type='zcta' AND geoid=$1

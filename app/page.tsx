@@ -98,7 +98,20 @@ export default function Home() {
     setDataArea(result.label); setAreaId(result.area_id); setQuery(result.label);
   }
 
-  useEffect(() => { void resolveLocation("Seattle").catch(() => { setDataArea("AQI data unavailable"); setDays([]); }); }, []);
+  useEffect(() => {
+    const loadFallback = () => void resolveLocation("Seattle").catch(() => { setDataArea("AQI data unavailable"); setDays([]); });
+    if (!navigator.geolocation) { loadFallback(); return; }
+    setLocationStatus("Finding your local metro area…");
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        void resolveLocation("", { lat: coords.latitude, lon: coords.longitude })
+          .then(() => { setIsCurrentLocation(true); setLocationStatus(""); })
+          .catch(() => { setLocationStatus(""); loadFallback(); });
+      },
+      () => { setLocationStatus(""); loadFallback(); },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
+    );
+  }, []);
   useEffect(() => {
     if (!areaId) return;
     void fetch(`/api/aqi/history?location_id=${encodeURIComponent(areaId)}&year=${year}`)
