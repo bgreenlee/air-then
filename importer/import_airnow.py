@@ -54,18 +54,10 @@ def fetch_daily(day: dt.date) -> list[tuple]:
     return records
 
 
-def load(database_url: str, reference_date: dt.date, start: dt.date, end: dt.date) -> int:
+def load(database_url: str, reference_date: dt.date, start: dt.date, end: dt.date, retain_station_days: int) -> int:
     sites = fetch_sites(reference_date)
-    records = []
-    day = start
-    while day <= end:
-        try:
-            for site_id, pollutant, aqi, concentration, units in fetch_daily(day):
-                records.append((site_id, day, pollutant, aqi, concentration, units, f"airnow/{day:%Y/%Y%m%d}/daily_data_v2.dat"))
-        except requests.HTTPError as error:
-            if error.response.status_code != 404:
-                raise
-        day += dt.timedelta(days=1)
+    cutoff = end - dt.timedelta(days=retain_station_days - 1)
+    loaded = 0
 
     with psycopg.connect(database_url) as conn, conn.cursor() as cur:
         cur.execute("""CREATE TEMP TABLE staging_sites (
@@ -86,41 +78,56 @@ def load(database_url: str, reference_date: dt.date, start: dt.date, end: dt.dat
         cur.execute("""CREATE TEMP TABLE staging_daily (
           epa_site_id text,date date,pollutant text,aqi smallint,concentration numeric,units text,source_file text
         ) ON COMMIT DROP""")
-        with cur.copy("COPY staging_daily (epa_site_id,date,pollutant,aqi,concentration,units,source_file) FROM STDIN") as copy:
-            for row in records:
-                copy.write_row(row)
-        cur.execute("""INSERT INTO daily_station_aqi(monitor_area_id,date,pollutant,aqi,concentration,units,source,source_file)
-          SELECT monitor.area_id,stage.date,stage.pollutant,stage.aqi,stage.concentration,stage.units,'airnow_preliminary',stage.source_file
-          FROM staging_daily stage JOIN monitoring_sites monitor ON monitor.epa_site_id=stage.epa_site_id
-          WHERE monitor.cbsa_area_id IS NOT NULL
-          ON CONFLICT(monitor_area_id,date,pollutant,source) DO UPDATE SET aqi=EXCLUDED.aqi,concentration=EXCLUDED.concentration,
-            units=EXCLUDED.units,source_file=EXCLUDED.source_file""")
-        cur.execute("""INSERT INTO daily_aqi(area_id,date,aqi,defining_parameter,reporting_sites,source_file,source,data_status,calculation_version)
-          SELECT monitor.cbsa_area_id,station.date,
-            MAX(station.aqi),
-            (array_agg(station.pollutant ORDER BY station.aqi DESC,station.pollutant))[1],
-            COUNT(DISTINCT station.monitor_area_id),
-            'AirNow daily monitor observations','airnow_preliminary','preliminary','airnow-daily-v1'
-          FROM daily_station_aqi station JOIN monitoring_sites monitor ON monitor.area_id=station.monitor_area_id
-          WHERE station.source='airnow_preliminary' AND station.date BETWEEN %s AND %s AND monitor.cbsa_area_id IS NOT NULL
-          GROUP BY monitor.cbsa_area_id,station.date
-          ON CONFLICT(area_id,date) DO UPDATE SET aqi=EXCLUDED.aqi,defining_parameter=EXCLUDED.defining_parameter,
-            reporting_sites=EXCLUDED.reporting_sites,source_file=EXCLUDED.source_file,source=EXCLUDED.source,
-            data_status=EXCLUDED.data_status,calculation_version=EXCLUDED.calculation_version""", (start, end))
-    return len(records)
+        cur.execute("DELETE FROM daily_station_aqi WHERE source='airnow_preliminary' AND date < %s", (cutoff,))
+        day = start
+        while day <= end:
+            try:
+                observations = fetch_daily(day)
+            except requests.HTTPError as error:
+                if error.response.status_code == 404:
+                    day += dt.timedelta(days=1)
+                    continue
+                raise
+            rows = [(site_id, day, pollutant, aqi, concentration, units, f"airnow/{day:%Y/%Y%m%d}/daily_data_v2.dat")
+                    for site_id, pollutant, aqi, concentration, units in observations]
+            loaded += len(rows)
+            cur.execute("TRUNCATE staging_daily")
+            with cur.copy("COPY staging_daily (epa_site_id,date,pollutant,aqi,concentration,units,source_file) FROM STDIN") as copy:
+                for row in rows:
+                    copy.write_row(row)
+            if day >= cutoff:
+                cur.execute("""INSERT INTO daily_station_aqi(monitor_area_id,date,pollutant,aqi,concentration,units,source,source_file)
+                  SELECT monitor.area_id,stage.date,stage.pollutant,stage.aqi,stage.concentration,stage.units,'airnow_preliminary',stage.source_file
+                  FROM staging_daily stage JOIN monitoring_sites monitor ON monitor.epa_site_id=stage.epa_site_id
+                  WHERE monitor.cbsa_area_id IS NOT NULL
+                  ON CONFLICT(monitor_area_id,date,pollutant,source) DO UPDATE SET aqi=EXCLUDED.aqi,concentration=EXCLUDED.concentration,
+                    units=EXCLUDED.units,source_file=EXCLUDED.source_file""")
+            cur.execute("""INSERT INTO daily_aqi(area_id,date,aqi,defining_parameter,reporting_sites,source_file,source,data_status,calculation_version)
+              SELECT monitor.cbsa_area_id,stage.date,MAX(stage.aqi),
+                (array_agg(stage.pollutant ORDER BY stage.aqi DESC,stage.pollutant))[1],
+                COUNT(DISTINCT monitor.area_id),'AirNow daily monitor observations','airnow_preliminary','preliminary','airnow-daily-v1'
+              FROM staging_daily stage JOIN monitoring_sites monitor ON monitor.epa_site_id=stage.epa_site_id
+              WHERE monitor.cbsa_area_id IS NOT NULL
+              GROUP BY monitor.cbsa_area_id,stage.date
+              ON CONFLICT(area_id,date) DO UPDATE SET aqi=EXCLUDED.aqi,defining_parameter=EXCLUDED.defining_parameter,
+                reporting_sites=EXCLUDED.reporting_sites,source_file=EXCLUDED.source_file,source=EXCLUDED.source,
+                data_status=EXCLUDED.data_status,calculation_version=EXCLUDED.calculation_version""")
+            day += dt.timedelta(days=1)
+    return loaded
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start-date", type=dt.date.fromisoformat, required=True)
     parser.add_argument("--end-date", type=dt.date.fromisoformat, required=True)
+    parser.add_argument("--retain-station-days", type=int, default=45)
     parser.add_argument("--database-url", default=os.getenv("DATABASE_URL"))
     args = parser.parse_args()
     if not args.database_url:
         parser.error("Set DATABASE_URL")
     if args.end_date < args.start_date:
         parser.error("end-date must not be before start-date")
-    count = load(args.database_url, args.end_date, args.start_date, args.end_date)
+    count = load(args.database_url, args.end_date, args.start_date, args.end_date, args.retain_station_days)
     print(f"Loaded {count:,} AirNow preliminary station AQI rows.")
 
 
