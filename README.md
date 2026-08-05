@@ -21,4 +21,4 @@ Load real local data with `python3 -m venv .venv && .venv/bin/pip install -r imp
 
 ## Cloudflare + Supabase deployment
 
-Create a Supabase project, enable PostGIS, and apply `supabase/migrations/20260804230000_initial.sql`. In GitHub Actions, add `SUPABASE_DB_URL` (a direct SSL connection string) and `CLOUDFLARE_API_TOKEN` (Workers edit permission). Pushing to `main` deploys the Worker; the daily workflow refreshes current-year EPA CBSA and county data at 13:17 UTC. Run the reference importer once initially before enabling the daily workflow.
+In GitHub Actions, add `SUPABASE_DB_URL` (a direct SSL connection string) and `CLOUDFLARE_API_TOKEN` (Workers edit permission). Run **Apply Supabase migrations** once, then run **Refresh EPA AQI** with `load_reference_data` selected. Pushing to `main` deploys the Worker; the daily workflow refreshes current-year EPA CBSA and county data at 13:17 UTC.

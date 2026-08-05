@@ -1,0 +1,21 @@
+name: Apply Supabase migrations
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-migrations
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply database schema
+        run: psql "$DATABASE_URL" --set ON_ERROR_STOP=1 --file supabase/migrations/20260804230000_initial.sql
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}

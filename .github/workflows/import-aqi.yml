@@ -4,6 +4,16 @@ on:
   schedule:
     - cron: "17 13 * * *"
   workflow_dispatch:
+    inputs:
+      year:
+        description: "EPA calendar year to import (blank = current year)"
+        required: false
+        type: string
+      load_reference_data:
+        description: "Also load Census ZIP and CBSA centroids (run once first)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -21,11 +31,20 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r importer/requirements.txt
+      - name: Load Census reference geography
+        if: ${{ inputs.load_reference_data }}
+        run: python importer/import_reference.py --year 2025
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
       - name: Upsert current-year CBSA AQI
-        run: python importer/import_aqi.py --kind cbsa --year "$(date -u +%Y)"
+        run: |
+          YEAR="${{ inputs.year }}"
+          python importer/import_aqi.py --kind cbsa --year "${YEAR:-$(date -u +%Y)}"
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
       - name: Upsert current-year county AQI
-        run: python importer/import_aqi.py --kind county --year "$(date -u +%Y)"
+        run: |
+          YEAR="${{ inputs.year }}"
+          python importer/import_aqi.py --kind county --year "${YEAR:-$(date -u +%Y)}"
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
