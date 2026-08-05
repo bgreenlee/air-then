@@ -13,12 +13,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Check for migration changes
+        id: migration_changes
+        if: github.event_name == 'push'
+        run: |
+          if git diff --quiet "${{ github.event.before }}" "${{ github.sha }}" -- supabase/migrations; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Apply pending Supabase migrations
+        if: github.event_name == 'workflow_dispatch' || steps.migration_changes.outputs.run == 'true'
         run: bash scripts/migrate.sh
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
