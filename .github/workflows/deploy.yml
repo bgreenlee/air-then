@@ -18,6 +18,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Apply pending Supabase migrations
+        run: bash scripts/migrate.sh
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
       - run: npx vinext deploy --name clear-skies-aqi
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
