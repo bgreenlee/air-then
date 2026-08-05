@@ -1,23 +1,18 @@
-name: Refresh EPA AQI
+name: Refresh AQI data
 
 on:
   schedule:
     - cron: "17 13 * * *"
   workflow_dispatch:
     inputs:
-      start_year:
-        description: "First EPA calendar year to import (blank = current year)"
+      start_date:
+        description: "First AirNow date to import (YYYY-MM-DD; blank = yesterday)"
         required: false
         type: string
-      end_year:
-        description: "Last EPA calendar year to import (blank = start year)"
+      end_date:
+        description: "Last AirNow date to import (YYYY-MM-DD; blank = start date)"
         required: false
         type: string
-      load_reference_data:
-        description: "Also load Census ZIP and CBSA centroids (run once first)"
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -35,22 +30,13 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r importer/requirements.txt
-      - name: Upsert EPA AQI year range
+      - name: Upsert AirNow daily monitor observations
         run: |
-          START_YEAR="${{ inputs.start_year }}"
-          END_YEAR="${{ inputs.end_year }}"
-          START_YEAR="${START_YEAR:-$(date -u +%Y)}"
-          END_YEAR="${END_YEAR:-$START_YEAR}"
-          if [ "$START_YEAR" -gt "$END_YEAR" ]; then echo "start_year must not exceed end_year"; exit 1; fi
-          for YEAR in $(seq "$START_YEAR" "$END_YEAR"); do
-            echo "Importing $YEAR"
-            python importer/import_aqi.py --kind cbsa --year "$YEAR"
-            python importer/import_aqi.py --kind county --year "$YEAR"
-          done
-        env:
-          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
-      - name: Load Census reference geography
-        if: ${{ inputs.load_reference_data }}
-        run: python importer/import_reference.py --year 2025
+          START_DATE="${{ inputs.start_date }}"
+          END_DATE="${{ inputs.end_date }}"
+          START_DATE="${START_DATE:-$(date -u -d yesterday +%F)}"
+          END_DATE="${END_DATE:-$START_DATE}"
+          if [[ "$START_DATE" > "$END_DATE" ]]; then echo "start_date must not exceed end_date"; exit 1; fi
+          python importer/import_airnow.py --start-date "$START_DATE" --end-date "$END_DATE"
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
