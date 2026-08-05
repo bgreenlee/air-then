@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 type Day = { date: string; aqi: number | null; pollutant: string | null; source?: string; data_status?: string };
-type SearchResult = { area_id: string; label: string; type: "city" | "metro" };
+type SearchResult = { area_id: string; label?: string; name?: string; type?: "city" | "metro" };
 
 const palette = ["", "good", "moderate", "sensitive", "unhealthy", "very-unhealthy", "hazardous"];
 const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -108,7 +108,8 @@ export default function Home() {
   const [historicalDays, setHistoricalDays] = useState<Record<number, Day[]>>({});
 
   function selectLocation(result: SearchResult) {
-    setDataArea(result.label.split(" → ").at(-1) ?? result.label); setAreaId(result.area_id); setQuery(result.label); setSuggestions([]);
+    const label = result.label ?? result.name ?? "Metro area";
+    setDataArea(label.split(" → ").at(-1) ?? label); setAreaId(result.area_id); setQuery(label); setSuggestions([]);
   }
 
   async function resolveLocation(search: string, coordinates?: { lat: number; lon: number }) {
@@ -200,7 +201,7 @@ export default function Home() {
           navigator.geolocation.getCurrentPosition(({ coords }) => { void resolveLocation("", { lat: coords.latitude, lon: coords.longitude }).then(() => { setIsCurrentLocation(true); setLocationStatus("Location found — showing the nearest EPA metro area."); }).catch(() => setLocationStatus("We couldn’t resolve local AQI coverage. Search by city or ZIP instead.")); }, () => setLocationStatus("We couldn’t access your location. Search by city or ZIP instead."), { enableHighAccuracy: false, timeout: 10000 });
         }}>◎</button><button>Explore AQI</button>
       </form>
-      {searchFocused && suggestions.length > 0 && <div className="autocomplete" role="listbox">{suggestions.map((result) => <button key={`${result.area_id}-${result.label}`} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { selectLocation(result); setSearchFocused(false); setIsCurrentLocation(false); }}><span>{result.label}</span><small>{result.type === "city" ? "City" : "Metro area"}</small></button>)}</div>}
+      {searchFocused && suggestions.length > 0 && <div className="autocomplete" role="listbox">{suggestions.map((result) => <button key={`${result.area_id}-${result.label ?? result.name}`} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { selectLocation(result); setSearchFocused(false); setIsCurrentLocation(false); }}><span>{result.label ?? result.name}</span><small>{result.type === "city" ? "City" : "Metro area"}</small></button>)}</div>}
       <p className="hint">{locationStatus || <>Try <button onClick={() => { setQuery("Seattle–Tacoma–Bellevue CBSA"); setDataArea("Seattle–Tacoma–Bellevue CBSA"); }}>98101</button>, <button onClick={() => { setQuery("Winthrop, WA"); }}>Winthrop, WA</button>, or any U.S. city</>}</p>
     </section>
     <section className="explorer" id="explore">
