@@ -56,7 +56,7 @@ def fetch_daily(day: dt.date) -> list[tuple]:
 
 def load(database_url: str, reference_date: dt.date, start: dt.date, end: dt.date, retain_station_days: int) -> int:
     sites = fetch_sites(reference_date)
-    cutoff = end - dt.timedelta(days=retain_station_days - 1)
+    cutoff = end + dt.timedelta(days=1) if retain_station_days <= 0 else end - dt.timedelta(days=retain_station_days - 1)
     loaded = 0
 
     with psycopg.connect(database_url) as conn, conn.cursor() as cur:
@@ -120,7 +120,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start-date", type=dt.date.fromisoformat, required=True)
     parser.add_argument("--end-date", type=dt.date.fromisoformat, required=True)
-    parser.add_argument("--retain-station-days", type=int, default=45)
+    parser.add_argument("--retain-station-days", type=int, default=0)
     parser.add_argument("--database-url", default=os.getenv("DATABASE_URL"))
     args = parser.parse_args()
     if not args.database_url:
