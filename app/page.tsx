@@ -45,11 +45,11 @@ function aqiColor(aqi: number | null) {
 
 function demoDays(year: number): Day[] {
   const dates: Day[] = [];
-  for (let d = new Date(`${year}-01-01T12:00:00`); d.getFullYear() === year; d.setDate(d.getDate() + 1)) {
+  for (let d = new Date(`${year}-01-01T12:00:00Z`); d.getUTCFullYear() === year; d.setUTCDate(d.getUTCDate() + 1)) {
     const n = Math.floor((d.getTime() / 86400000 + year * 11) % 29);
-    const summer = d.getMonth() >= 5 && d.getMonth() <= 8;
+    const summer = d.getUTCMonth() >= 5 && d.getUTCMonth() <= 8;
     const futureDate = year === currentYear && d.toISOString().slice(0, 10) > today;
-    const aqi = futureDate || n === 0 ? null : Math.max(14, Math.round(31 + Math.sin(d.getDate() / 3) * 13 + (summer ? 21 : 0) + (n === 6 ? 62 : 0)));
+    const aqi = futureDate || n === 0 ? null : Math.max(14, Math.round(31 + Math.sin(d.getUTCDate() / 3) * 13 + (summer ? 21 : 0) + (n === 6 ? 62 : 0)));
     dates.push({ date: d.toISOString().slice(0, 10), aqi, pollutant: aqi && aqi > 55 ? "Ozone" : "PM2.5" });
   }
   return dates;
@@ -68,7 +68,7 @@ function dailyGradient(days: Day[]) {
 function fullYearDays(year: number, reportedDays: Day[]) {
   const byDate = new Map(reportedDays.map((day) => [day.date, day]));
   const dates: Day[] = [];
-  for (let date = new Date(year, 0, 1); date.getFullYear() === year; date.setDate(date.getDate() + 1)) {
+  for (let date = new Date(Date.UTC(year, 0, 1)); date.getUTCFullYear() === year; date.setUTCDate(date.getUTCDate() + 1)) {
     const key = date.toISOString().slice(0, 10);
     dates.push(byDate.get(key) ?? { date: key, aqi: null, pollutant: null });
   }
@@ -180,8 +180,8 @@ export default function Home() {
   const trendMaxDays = Math.max(1, ...annualTrends.map((trend) => trend.daysAbove100));
   const dayByDate = new Map(days.map(day => [day.date, day]));
   const cells = Array.from({ length: 371 }, (_, index) => {
-    const date = new Date(year, 0, index + 1);
-    return date.getFullYear() === year ? dayByDate.get(date.toISOString().slice(0, 10)) ?? { date: date.toISOString().slice(0, 10), aqi: null, pollutant: null } : null;
+    const date = new Date(Date.UTC(year, 0, index + 1));
+    return date.getUTCFullYear() === year ? dayByDate.get(date.toISOString().slice(0, 10)) ?? { date: date.toISOString().slice(0, 10), aqi: null, pollutant: null } : null;
   });
 
   return <main>
@@ -190,7 +190,7 @@ export default function Home() {
       <p className="eyebrow">Historical U.S. Air Quality</p>
       <p className="intro">Search a city, ZIP code, or your current location to explore daily AQI records.</p>
       <form className="search" onSubmit={(e) => { e.preventDefault(); setLocationStatus("Resolving location…"); void resolveLocation(query).then(() => { setIsCurrentLocation(false); setLocationStatus(""); }).catch(error => setLocationStatus(error.message)); }}>
-        <span>⌕</span><input aria-label="Search city or ZIP code" value={query} onFocus={() => setSearchFocused(true)} onBlur={() => window.setTimeout(() => setSearchFocused(false), 150)} onChange={e => setQuery(e.target.value)} placeholder="City or ZIP code"/><button className="locate" type="button" aria-label="Use my current location" title="Use my current location" onClick={() => {
+        <span>⌕</span><input id="location-search" name="location" aria-label="Search city or ZIP code" value={query} onFocus={e => { e.currentTarget.select(); setSearchFocused(true); }} onBlur={() => window.setTimeout(() => setSearchFocused(false), 150)} onChange={e => setQuery(e.target.value)} placeholder="City or ZIP code"/><button className="locate" type="button" aria-label="Use my current location" title="Use my current location" onClick={() => {
           if (!navigator.geolocation) { setLocationStatus("Location isn’t supported by this browser."); return; }
           setLocationStatus("Finding your location…");
           navigator.geolocation.getCurrentPosition(({ coords }) => { void resolveLocation("", { lat: coords.latitude, lon: coords.longitude }).then(() => { setIsCurrentLocation(true); setLocationStatus("Location found — showing the nearest EPA metro area."); }).catch(() => setLocationStatus("We couldn’t resolve local AQI coverage. Search by city or ZIP instead.")); }, () => setLocationStatus("We couldn’t access your location. Search by city or ZIP instead."), { enableHighAccuracy: false, timeout: 10000 });
