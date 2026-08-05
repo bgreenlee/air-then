@@ -3,6 +3,9 @@
   "name": "clear-skies-aqi",
   "compatibility_date": "2026-05-22",
   "main": "./worker/index.ts",
+  "vars": {
+    "AQI_CACHE_VERSION": "1"
+  },
   "assets": {
     "directory": "dist/client",
     "not_found_handling": "none",

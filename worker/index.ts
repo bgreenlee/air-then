@@ -7,6 +7,7 @@ interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
   HYPERDRIVE: Hyperdrive;
+  AQI_CACHE_VERSION: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -21,6 +22,24 @@ interface ExecutionContext {
   passThroughOnException(): void;
 }
 
+async function cachedApiResponse(request: Request, ctx: ExecutionContext, version: string, maxAge: number, handler: () => Promise<Response>) {
+  if (request.method !== "GET") return handler();
+  const cacheKeyUrl = new URL(request.url);
+  cacheKeyUrl.searchParams.set("__cache_version", version);
+  const cache = caches.default;
+  const cacheKey = new Request(cacheKeyUrl.toString());
+  const cached = await cache.match(cacheKey);
+  if (cached) return cached;
+
+  const response = await handler();
+  if (!response.ok) return response;
+  const headers = new Headers(response.headers);
+  headers.set("Cache-Control", `public, max-age=${maxAge}`);
+  const cacheable = new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  ctx.waitUntil(cache.put(cacheKey, cacheable.clone()));
+  return cacheable;
+}
+
 // Image security config. SVG sources with .svg extension auto-skip the
 // optimization endpoint on the client side (served directly, no proxy).
 // To route SVGs through the optimizer (with security headers), set
@@ -32,13 +51,14 @@ const worker = {
     const url = new URL(request.url);
 
     if (url.pathname === "/api/locations/search") {
-      const query = url.searchParams.get("q")?.trim() ?? "";
-      const lat = url.searchParams.get("lat");
-      const lon = url.searchParams.get("lon");
-      if (!query && !(lat && lon)) return Response.json({ results: [] });
-      const client = new Client({ connectionString: env.HYPERDRIVE.connectionString });
-      await client.connect();
-      try {
+      return cachedApiResponse(request, ctx, env.AQI_CACHE_VERSION || "1", 86_400, async () => {
+        const query = url.searchParams.get("q")?.trim() ?? "";
+        const lat = url.searchParams.get("lat");
+        const lon = url.searchParams.get("lon");
+        if (!query && !(lat && lon)) return Response.json({ results: [] });
+        const client = new Client({ connectionString: env.HYPERDRIVE.connectionString });
+        await client.connect();
+        try {
         const [city, rawState] = query.split(",", 2);
         const state = rawState?.trim().toUpperCase() || null;
         const result = lat && lon
@@ -71,11 +91,13 @@ const worker = {
                 ORDER BY area_id,priority,label
               ) SELECT area_id,name,geoid,label,type FROM deduplicated
               ORDER BY priority,label LIMIT 8`, [`%${city.trim()}%`, state]);
-        return Response.json({ query, results: result.rows });
-      } finally { await client.end(); }
+          return Response.json({ query, results: result.rows });
+        } finally { await client.end(); }
+      });
     }
 
     if (url.pathname === "/api/aqi/history") {
+      return cachedApiResponse(request, ctx, env.AQI_CACHE_VERSION || "1", 3_600, async () => {
       const areaId = url.searchParams.get("location_id");
       const startYear = Number(url.searchParams.get("start_year") ?? url.searchParams.get("year"));
       const endYear = Number(url.searchParams.get("end_year") ?? startYear);
@@ -96,6 +118,7 @@ const worker = {
         for (const day of days.rows) daysByYear[new Date(day.date).getUTCFullYear()].push(day);
         return Response.json({ data_source: { area: area.rows[0].name, type: "metro", source: currentSource }, days_by_year: daysByYear });
       } finally { await client.end(); }
+      });
     }
 
     if (url.pathname === "/_vinext/image") {
