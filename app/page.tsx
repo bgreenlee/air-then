@@ -149,26 +149,20 @@ export default function Home() {
   }, []);
   useEffect(() => {
     if (!areaId) return;
-    void fetch(`/api/aqi/history?location_id=${encodeURIComponent(areaId)}&year=${year}`)
-      .then(response => response.ok ? response.json() : Promise.reject(new Error("AQI history unavailable")))
-      .then(payload => { setDays(payload.days); setDataSource(payload.data_source?.source === "airnow_preliminary" ? "AirNow daily monitor aggregate · Preliminary" : "EPA daily AQI aggregate"); })
-      .catch(() => setDays([]));
-  }, [areaId, year]);
-  useEffect(() => {
-    if (!areaId) return;
     let cancelled = false;
-    void Promise.all(historicalYears.map(async (historyYear) => {
-      const response = await fetch(`/api/aqi/history?location_id=${encodeURIComponent(areaId)}&year=${historyYear}`);
-      if (!response.ok) throw new Error("AQI history unavailable");
-      const payload = await response.json();
-      return [historyYear, payload.days as Day[]] as const;
-    })).then((entries) => {
-      if (!cancelled) setHistoricalDays(Object.fromEntries(entries));
-    }).catch(() => {
-      if (!cancelled) setHistoricalDays({});
-    });
+    void fetch(`/api/aqi/history?location_id=${encodeURIComponent(areaId)}&start_year=${historicalYears[0]}&end_year=${historicalYears.at(-1)}`)
+      .then(response => response.ok ? response.json() : Promise.reject(new Error("AQI history unavailable")))
+      .then(payload => {
+        if (cancelled) return;
+        setHistoricalDays(payload.days_by_year ?? {});
+        setDataSource(payload.data_source?.source === "airnow_preliminary" ? "AirNow daily monitor aggregate · Preliminary" : "EPA daily AQI aggregate");
+      })
+      .catch(() => { if (!cancelled) setHistoricalDays({}); });
     return () => { cancelled = true; };
   }, [areaId, historicalYears]);
+  useEffect(() => {
+    setDays(historicalDays[year] ?? []);
+  }, [historicalDays, year]);
   const stats = useMemo(() => {
     const values = days.flatMap((d) => d.aqi === null ? [] : [d.aqi]).sort((a,b) => a-b);
     return { median: values.length ? values[Math.floor(values.length / 2)] : "—", max: values.length ? Math.max(...values) : "—", gt50: values.filter(x => x > 50).length, gt100: values.filter(x => x > 100).length };

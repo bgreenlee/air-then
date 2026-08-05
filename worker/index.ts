@@ -77,19 +77,24 @@ const worker = {
 
     if (url.pathname === "/api/aqi/history") {
       const areaId = url.searchParams.get("location_id");
-      const year = Number(url.searchParams.get("year"));
-      if (!areaId || !Number.isInteger(year)) return new Response("location_id and year are required", { status: 400 });
+      const startYear = Number(url.searchParams.get("start_year") ?? url.searchParams.get("year"));
+      const endYear = Number(url.searchParams.get("end_year") ?? startYear);
+      if (!areaId || !Number.isInteger(startYear) || !Number.isInteger(endYear) || endYear < startYear || endYear - startYear > 19) {
+        return new Response("location_id and a year range of up to 20 years are required", { status: 400 });
+      }
       const client = new Client({ connectionString: env.HYPERDRIVE.connectionString });
       await client.connect();
       try {
         const [area, days] = await Promise.all([
           client.query("SELECT name FROM geographic_areas WHERE id=$1 AND type='cbsa'", [areaId]),
           client.query(`SELECT date::text,aqi,defining_parameter AS pollutant,reporting_sites,source,data_status
-            FROM daily_aqi WHERE area_id=$1 AND EXTRACT(YEAR FROM date)=$2 ORDER BY date`, [areaId, year]),
+            FROM daily_aqi WHERE area_id=$1 AND date >= make_date($2,1,1) AND date < make_date($3 + 1,1,1) ORDER BY date`, [areaId, startYear, endYear]),
         ]);
         if (!area.rowCount) return new Response("AQI area not found", { status: 404 });
         const currentSource = days.rows.find((row) => row.source === "airnow_preliminary")?.source ?? "epa_airdata";
-        return Response.json({ data_source: { area: area.rows[0].name, type: "metro", source: currentSource }, days: days.rows });
+        const daysByYear = Object.fromEntries(Array.from({ length: endYear - startYear + 1 }, (_, index) => [startYear + index, [] as typeof days.rows]));
+        for (const day of days.rows) daysByYear[new Date(day.date).getUTCFullYear()].push(day);
+        return Response.json({ data_source: { area: area.rows[0].name, type: "metro", source: currentSource }, days_by_year: daysByYear });
       } finally { await client.end(); }
     }
 
