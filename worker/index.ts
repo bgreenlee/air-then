@@ -54,11 +54,8 @@ const worker = {
               ORDER BY c.centroid <-> zip.centroid LIMIT 1`, [query])
             : await client.query(`SELECT id::text AS area_id,name,geoid FROM geographic_areas
               WHERE type='cbsa' AND EXISTS (SELECT 1 FROM daily_aqi d WHERE d.area_id=geographic_areas.id)
-                AND NOT EXISTS (
-                  SELECT 1 FROM unnest(regexp_split_to_array(trim($1), '[^[:alnum:]]+')) AS token
-                  WHERE token <> '' AND geographic_areas.name NOT ILIKE ('%' || token || '%')
-                )
-              ORDER BY name LIMIT 8`, [query]);
+                AND name ILIKE $1
+              ORDER BY name LIMIT 8`, [`%${query.split(",")[0].trim()}%`]);
         return Response.json({ query, results: result.rows.map((row) => ({ ...row, label: row.name, type: "metro" })) });
       } finally { await client.end(); }
     }
