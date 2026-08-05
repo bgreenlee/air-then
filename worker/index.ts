@@ -39,10 +39,13 @@ const worker = {
       const client = new Client({ connectionString: env.HYPERDRIVE.connectionString });
       await client.connect();
       try {
+        const [city, rawState] = query.split(",", 2);
+        const state = rawState?.trim().toUpperCase() || null;
         const result = lat && lon
           ? await client.query(`SELECT c.id::text AS area_id,c.name,c.geoid FROM geographic_areas c
               WHERE c.type='cbsa' AND c.centroid IS NOT NULL AND EXISTS (SELECT 1 FROM daily_aqi d WHERE d.area_id=c.id)
-              ORDER BY c.centroid <-> ST_SetSRID(ST_MakePoint($1,$2),4326) LIMIT 1`, [Number(lon), Number(lat)])
+              ORDER BY CASE WHEN c.geom IS NOT NULL AND ST_Covers(c.geom,ST_SetSRID(ST_MakePoint($1,$2),4326)) THEN 0 ELSE 1 END,
+                c.centroid <-> ST_SetSRID(ST_MakePoint($1,$2),4326) LIMIT 1`, [Number(lon), Number(lat)])
           : /^\d{5}$/.test(query)
             ? await client.query(`WITH zip AS (
                 SELECT centroid FROM geographic_areas WHERE type='zcta' AND geoid=$1
@@ -50,12 +53,25 @@ const worker = {
               SELECT c.id::text AS area_id,c.name,c.geoid FROM geographic_areas c,zip
               WHERE c.type='cbsa' AND c.centroid IS NOT NULL
                 AND EXISTS (SELECT 1 FROM daily_aqi d WHERE d.area_id=c.id)
-              ORDER BY c.centroid <-> zip.centroid LIMIT 1`, [query])
-            : await client.query(`SELECT id::text AS area_id,name,geoid FROM geographic_areas
-              WHERE type='cbsa' AND EXISTS (SELECT 1 FROM daily_aqi d WHERE d.area_id=geographic_areas.id)
-                AND name ILIKE $1
-              ORDER BY name LIMIT 8`, [`%${query.split(",")[0].trim()}%`]);
-        return Response.json({ query, results: result.rows.map((row) => ({ ...row, label: row.name, type: "metro" })) });
+              ORDER BY CASE WHEN c.geom IS NOT NULL AND ST_Covers(c.geom,zip.centroid) THEN 0 ELSE 1 END,
+                c.centroid <-> zip.centroid LIMIT 1`, [query])
+            : await client.query(`WITH matches AS (
+                SELECT c.id::text AS area_id,c.name,c.geoid,
+                  regexp_replace(p.name, ' (city|town|village|CDP)$', '', 'i') || ', ' || (p.metadata->>'state') || ' → ' || c.name AS label, 'city' AS type, 0 AS priority
+                FROM geographic_areas p JOIN geographic_areas c ON c.type='cbsa'
+                WHERE p.type='place' AND p.name ILIKE $1 AND ($2::text IS NULL OR p.metadata->>'state'=$2)
+                  AND c.geom IS NOT NULL AND ST_Covers(c.geom,p.centroid)
+                  AND EXISTS (SELECT 1 FROM daily_aqi d WHERE d.area_id=c.id)
+                UNION ALL
+                SELECT c.id::text,c.name,c.geoid,c.name,'metro',1
+                FROM geographic_areas c WHERE c.type='cbsa' AND c.name ILIKE $1
+                  AND EXISTS (SELECT 1 FROM daily_aqi d WHERE d.area_id=c.id)
+              ), deduplicated AS (
+                SELECT DISTINCT ON (area_id) area_id,name,geoid,label,type,priority FROM matches
+                ORDER BY area_id,priority,label
+              ) SELECT area_id,name,geoid,label,type FROM deduplicated
+              ORDER BY priority,label LIMIT 8`, [`%${city.trim()}%`, state]);
+        return Response.json({ query, results: result.rows });
       } finally { await client.end(); }
     }
 

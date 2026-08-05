@@ -13,6 +13,11 @@ on:
         description: "Last AirNow date to import (YYYY-MM-DD; blank = start date)"
         required: false
         type: string
+      load_reference_data:
+        description: "Refresh Census places and CBSA boundaries"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -38,5 +43,10 @@ jobs:
           END_DATE="${END_DATE:-$START_DATE}"
           if [[ "$START_DATE" > "$END_DATE" ]]; then echo "start_date must not exceed end_date"; exit 1; fi
           python importer/import_airnow.py --start-date "$START_DATE" --end-date "$END_DATE"
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+      - name: Load Census search geography
+        if: ${{ inputs.load_reference_data }}
+        run: python importer/import_reference.py --year 2025 --with-cbsa-boundaries
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}

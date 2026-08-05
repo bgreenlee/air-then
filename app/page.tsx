@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 type Day = { date: string; aqi: number | null; pollutant: string | null; source?: string; data_status?: string };
+type SearchResult = { area_id: string; label: string; type: "city" | "metro" };
 
 const palette = ["", "good", "moderate", "sensitive", "unhealthy", "very-unhealthy", "hazardous"];
 const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -101,8 +102,14 @@ export default function Home() {
   const [tooltip, setTooltip] = useState<{ day: Day; x: number; y: number } | null>(null);
   const [days, setDays] = useState<Day[]>([]);
   const [dataSource, setDataSource] = useState("Daily monitor aggregate");
+  const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
+  const [searchFocused, setSearchFocused] = useState(false);
   const historicalYears = useMemo(() => Array.from({ length: 10 }, (_, index) => currentYear - 9 + index), []);
   const [historicalDays, setHistoricalDays] = useState<Record<number, Day[]>>({});
+
+  function selectLocation(result: SearchResult) {
+    setDataArea(result.label.split(" → ").at(-1) ?? result.label); setAreaId(result.area_id); setQuery(result.label); setSuggestions([]);
+  }
 
   async function resolveLocation(search: string, coordinates?: { lat: number; lon: number }) {
     const params = coordinates ? new URLSearchParams({ lat: String(coordinates.lat), lon: String(coordinates.lon) }) : new URLSearchParams({ q: search });
@@ -110,8 +117,19 @@ export default function Home() {
     const payload = await response.json();
     const result = payload.results?.[0];
     if (!result) throw new Error("No metro-area AQI record was found for that location.");
-    setDataArea(result.label); setAreaId(result.area_id); setQuery(result.label);
+    selectLocation(result);
   }
+
+  useEffect(() => {
+    if (!searchFocused || query.trim().length < 2) { setSuggestions([]); return; }
+    const timer = window.setTimeout(() => {
+      void fetch(`/api/locations/search?q=${encodeURIComponent(query)}`)
+        .then((response) => response.ok ? response.json() : { results: [] })
+        .then((payload) => setSuggestions(payload.results ?? []))
+        .catch(() => setSuggestions([]));
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [query, searchFocused]);
 
   useEffect(() => {
     const loadFallback = () => void resolveLocation("Seattle").catch(() => { setDataArea("AQI data unavailable"); setDays([]); });
@@ -176,12 +194,13 @@ export default function Home() {
       <p className="eyebrow">Historical U.S. Air Quality</p>
       <p className="intro">Search a city, ZIP code, or your current location to explore daily AQI records.</p>
       <form className="search" onSubmit={(e) => { e.preventDefault(); setLocationStatus("Resolving location…"); void resolveLocation(query).then(() => { setIsCurrentLocation(false); setLocationStatus(""); }).catch(error => setLocationStatus(error.message)); }}>
-        <span>⌕</span><input aria-label="Search city or ZIP code" value={query} onChange={e => setQuery(e.target.value)} placeholder="City or ZIP code"/><button className="locate" type="button" aria-label="Use my current location" title="Use my current location" onClick={() => {
+        <span>⌕</span><input aria-label="Search city or ZIP code" value={query} onFocus={() => setSearchFocused(true)} onBlur={() => window.setTimeout(() => setSearchFocused(false), 150)} onChange={e => setQuery(e.target.value)} placeholder="City or ZIP code"/><button className="locate" type="button" aria-label="Use my current location" title="Use my current location" onClick={() => {
           if (!navigator.geolocation) { setLocationStatus("Location isn’t supported by this browser."); return; }
           setLocationStatus("Finding your location…");
           navigator.geolocation.getCurrentPosition(({ coords }) => { void resolveLocation("", { lat: coords.latitude, lon: coords.longitude }).then(() => { setIsCurrentLocation(true); setLocationStatus("Location found — showing the nearest EPA metro area."); }).catch(() => setLocationStatus("We couldn’t resolve local AQI coverage. Search by city or ZIP instead.")); }, () => setLocationStatus("We couldn’t access your location. Search by city or ZIP instead."), { enableHighAccuracy: false, timeout: 10000 });
         }}>◎</button><button>Explore AQI</button>
       </form>
+      {searchFocused && suggestions.length > 0 && <div className="autocomplete" role="listbox">{suggestions.map((result) => <button key={`${result.area_id}-${result.label}`} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { selectLocation(result); setSearchFocused(false); setIsCurrentLocation(false); }}><span>{result.label}</span><small>{result.type === "city" ? "City" : "Metro area"}</small></button>)}</div>}
       <p className="hint">{locationStatus || <>Try <button onClick={() => { setQuery("Seattle–Tacoma–Bellevue CBSA"); setDataArea("Seattle–Tacoma–Bellevue CBSA"); }}>98101</button>, <button onClick={() => { setQuery("Winthrop, WA"); }}>Winthrop, WA</button>, or any U.S. city</>}</p>
     </section>
     <section className="explorer" id="explore">
