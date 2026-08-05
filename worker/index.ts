@@ -44,9 +44,21 @@ const worker = {
               SELECT c.id::text AS area_id,c.name,c.geoid FROM geographic_areas c,point
               WHERE c.type='cbsa' AND c.centroid IS NOT NULL AND EXISTS (SELECT 1 FROM daily_aqi d WHERE d.area_id=c.id)
               ORDER BY c.centroid <-> point.centroid LIMIT 1`, [Number(lon), Number(lat)])
-          : await client.query(`SELECT id::text AS area_id,name,geoid FROM geographic_areas
-              WHERE type='cbsa' AND name ILIKE $1 AND EXISTS (SELECT 1 FROM daily_aqi d WHERE d.area_id=geographic_areas.id)
-              ORDER BY name LIMIT 8`, [`%${query}%`]);
+          : /^\d{5}$/.test(query)
+            ? await client.query(`WITH zip AS (
+                SELECT centroid FROM geographic_areas WHERE type='zcta' AND geoid=$1
+              )
+              SELECT c.id::text AS area_id,c.name,c.geoid FROM geographic_areas c,zip
+              WHERE c.type='cbsa' AND c.centroid IS NOT NULL
+                AND EXISTS (SELECT 1 FROM daily_aqi d WHERE d.area_id=c.id)
+              ORDER BY c.centroid <-> zip.centroid LIMIT 1`, [query])
+            : await client.query(`SELECT id::text AS area_id,name,geoid FROM geographic_areas
+              WHERE type='cbsa' AND EXISTS (SELECT 1 FROM daily_aqi d WHERE d.area_id=geographic_areas.id)
+                AND NOT EXISTS (
+                  SELECT 1 FROM unnest(regexp_split_to_array(trim($1), '[^[:alnum:]]+')) AS token
+                  WHERE token <> '' AND geographic_areas.name NOT ILIKE ('%' || token || '%')
+                )
+              ORDER BY name LIMIT 8`, [query]);
         return Response.json({ query, results: result.rows.map((row) => ({ ...row, label: row.name, type: "metro" })) });
       } finally { await client.end(); }
     }
