@@ -50,7 +50,8 @@ const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
-    if (url.protocol === "http:") {
+    const isProductionHost = url.hostname === "airthen.com" || url.hostname === "airthen.info";
+    if (isProductionHost && url.protocol === "http:") {
       url.protocol = "https:";
       return Response.redirect(url.toString(), 301);
     }
