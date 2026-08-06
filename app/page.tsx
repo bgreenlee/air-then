@@ -135,18 +135,7 @@ export default function Home() {
   }, [query, searchFocused]);
 
   useEffect(() => {
-    const loadFallback = () => void resolveLocation("Seattle").catch(() => { setDataArea("AQI data unavailable"); setDays([]); });
-    if (!navigator.geolocation) { loadFallback(); return; }
-    setLocationStatus("Finding your local metro area…");
-    navigator.geolocation.getCurrentPosition(
-      ({ coords }) => {
-        void resolveLocation("", { lat: coords.latitude, lon: coords.longitude })
-          .then(() => { setIsCurrentLocation(true); setLocationStatus(""); })
-          .catch(() => { setLocationStatus(""); loadFallback(); });
-      },
-      () => { setLocationStatus(""); loadFallback(); },
-      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
-    );
+    void resolveLocation("Seattle").catch(() => { setDataArea("AQI data unavailable"); setDays([]); });
   }, []);
   useEffect(() => {
     if (!areaId) return;
