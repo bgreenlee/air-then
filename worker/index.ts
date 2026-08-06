@@ -50,6 +50,11 @@ const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.protocol === "http:") {
+      url.protocol = "https:";
+      return Response.redirect(url.toString(), 301);
+    }
+
     if (url.pathname === "/api/locations/search") {
       return cachedApiResponse(request, ctx, env.AQI_CACHE_VERSION || "1", 86_400, async () => {
         const query = url.searchParams.get("q")?.trim() ?? "";
