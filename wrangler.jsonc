@@ -3,6 +3,10 @@
   "name": "clear-skies-aqi",
   "compatibility_date": "2026-05-22",
   "main": "./worker/index.ts",
+  "routes": [
+    { "pattern": "airthen.com", "custom_domain": true },
+    { "pattern": "airthen.info", "custom_domain": true }
+  ],
   "vars": {
     "AQI_CACHE_VERSION": "1"
   },

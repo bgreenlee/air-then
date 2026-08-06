@@ -1,4 +1,6 @@
-# Clear Skies
+# AirThen
+
+Historical air quality.
 
 Historical U.S. AQI exploration with transparent geographic sourcing. A search resolves a point, then selects CBSA AQI only with strong coverage, county AQI otherwise, and nearby monitoring sites as a final fallback.
 
