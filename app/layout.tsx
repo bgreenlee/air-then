@@ -6,7 +6,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 export const metadata: Metadata = {
   title: "AirThen — Historical air quality",
   description: "Explore historical U.S. Air Quality Index data with transparent geographic sourcing.",
-  icons: { icon: "/favicon.svg" },
+  icons: { icon: "/airthen-mark.svg" },
   openGraph: { title: "AirThen", description: "Historical air quality", images: ["/og.png"] },
   twitter: { card: "summary_large_image", title: "AirThen", images: ["/og.png"] },
 };

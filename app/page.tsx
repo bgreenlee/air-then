@@ -185,7 +185,7 @@ export default function Home() {
   });
 
   return <main>
-    <nav><a className="brand" href="#top"><span>◎</span> AirThen</a><div className="nav-links"><a href="https://www.epa.gov/outdoor-air-quality-data" target="_blank" rel="noreferrer">EPA AirData ↗</a></div></nav>
+    <nav><a className="brand" href="#top"><img className="brand-mark" width="28" height="28" src="/airthen-mark.svg" alt=""/>AirThen</a><div className="nav-links"><a href="https://www.epa.gov/outdoor-air-quality-data" target="_blank" rel="noreferrer">EPA AirData ↗</a></div></nav>
     <section className="hero" id="top">
       <p className="eyebrow">Historical U.S. Air Quality</p>
       <p className="intro">Search a city, ZIP code, or your current location to explore daily AQI records.</p>

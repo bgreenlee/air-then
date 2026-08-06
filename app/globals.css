@@ -1,4 +1,5 @@
 @import "tailwindcss";
+.brand{display:inline-flex;align-items:center;gap:9px}.brand-mark{display:block;flex:none}
 .footer-links{display:flex;align-items:center;gap:13px}.github-link{display:inline-flex;align-items:center}.github-link img{width:17px;height:17px;opacity:.7;transition:opacity .15s}.github-link:hover img{opacity:1}
 .metrics{grid-template-columns:repeat(4,1fr)}
 .chart-heading p:not(.eyebrow){font-size:13px;line-height:1.5}
