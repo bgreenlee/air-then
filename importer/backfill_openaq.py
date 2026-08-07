@@ -64,7 +64,7 @@ def main():
         location_id = location["id"]
         print(f"[{index}/{len(monitors)}] {location_id} {location['name']}")
         download(args.data_dir, location_id, args.start_year, args.end_year)
-        load(args.database_url, args.data_dir / str(location_id), str(location_id), location["name"], location["coordinates"]["latitude"], location["coordinates"]["longitude"], location["country"]["name"], location["provider"]["name"])
+        load(args.database_url, args.data_dir / str(location_id), str(location_id), location["name"], location["coordinates"]["latitude"], location["coordinates"]["longitude"], location["country"]["name"], location["provider"]["name"], args.iso)
 
 
 if __name__ == "__main__":

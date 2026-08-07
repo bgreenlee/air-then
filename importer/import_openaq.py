@@ -35,16 +35,16 @@ def read_measurements(data_dir: Path, location_id: str):
             for (date, pollutant, units), (total, count, source_file) in sorted(totals.items())]
 
 
-def load(database_url: str, data_dir: Path, location_id: str, name: str, latitude: float, longitude: float, country: str = "France", provider: str = "EEA France") -> int:
+def load(database_url: str, data_dir: Path, location_id: str, name: str, latitude: float, longitude: float, country: str = "France", provider: str = "EEA France", country_code: str = "FR") -> int:
     rows = read_measurements(data_dir, location_id)
     with psycopg.connect(database_url) as conn, conn.cursor() as cur:
-        cur.execute("""INSERT INTO geographic_areas(type, geoid, name, centroid, metadata)
-          VALUES ('monitor', %s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326),
+        cur.execute("""INSERT INTO geographic_areas(type, geoid, name, country_code, centroid, metadata)
+          VALUES ('monitor', %s, %s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326),
                   jsonb_build_object('source', 'OpenAQ', 'source_location_id', %s::text,
                                      'provider', %s::text, 'country', %s::text))
           ON CONFLICT(type, geoid) DO UPDATE SET name=EXCLUDED.name,
             centroid=EXCLUDED.centroid, metadata=EXCLUDED.metadata
-          RETURNING id""", (f"openaq:{location_id}", name, longitude, latitude, location_id, provider, country))
+          RETURNING id""", (f"openaq:{location_id}", name, country_code.upper(), longitude, latitude, location_id, provider, country))
         area_id = cur.fetchone()[0]
         cur.executemany("""INSERT INTO daily_pollutant_measurements
           (area_id, date, pollutant, value, units, observation_count, source, source_location_id, source_file)
