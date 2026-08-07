@@ -1,0 +1,51 @@
+name: Import OpenAQ measurements
+
+on:
+  schedule:
+    - cron: "35 6 * * *"
+  workflow_dispatch:
+    inputs:
+      iso:
+        description: Country ISO code
+        required: true
+        default: FR
+      start_year:
+        description: First archive year
+        required: true
+        default: "2026"
+      end_year:
+        description: Last archive year
+        required: true
+        default: "2026"
+
+permissions:
+  contents: read
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install importer dependencies
+        run: pip install -r importer/requirements.txt
+      - name: Import current OpenAQ data
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+          OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
+        run: |
+          year="$(date -u +%Y)"
+          iso="${{ inputs.iso || 'FR' }}"
+          start_year="${{ inputs.start_year || '' }}"
+          end_year="${{ inputs.end_year || '' }}"
+          if [ -z "$start_year" ]; then start_year="$year"; fi
+          if [ -z "$end_year" ]; then end_year="$year"; fi
+          python importer/backfill_openaq.py \
+            --iso "$iso" \
+            --active-since "2025-01-01" \
+            --start-year "$start_year" \
+            --end-year "$end_year" \
+            --data-dir /tmp/openaq-data \
+            --registry /tmp/openaq-locations.json

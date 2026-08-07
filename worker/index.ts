@@ -57,7 +57,7 @@ const worker = {
     }
 
     if (url.pathname === "/api/locations/search") {
-      return cachedApiResponse(request, ctx, env.AQI_CACHE_VERSION || "1", 86_400, async () => {
+      return (async () => {
         const query = url.searchParams.get("q")?.trim() ?? "";
         const lat = url.searchParams.get("lat");
         const lon = url.searchParams.get("lon");
@@ -82,6 +82,12 @@ const worker = {
               ORDER BY CASE WHEN c.geom IS NOT NULL AND ST_Covers(c.geom,zip.centroid) THEN 0 ELSE 1 END,
                 c.centroid <-> zip.centroid LIMIT 1`, [query])
             : await client.query(`WITH matches AS (
+                SELECT c.id::text AS area_id,c.name,c.geoid,c.name || ', ' || COALESCE(c.metadata->>'country', 'International') AS label,
+                  'monitor' AS type, CASE WHEN c.metadata->>'country' ILIKE $1 THEN -1 ELSE 0 END AS priority
+                FROM geographic_areas c
+                WHERE c.type='monitor' AND (c.name ILIKE $1 OR c.metadata->>'country' ILIKE $1)
+                  AND EXISTS (SELECT 1 FROM daily_pollutant_measurements d WHERE d.area_id=c.id)
+                UNION ALL
                 SELECT c.id::text AS area_id,c.name,c.geoid,
                   regexp_replace(p.name, ' (city|town|village|CDP)$', '', 'i') || ', ' || (p.metadata->>'state') || ' → ' || c.name AS label, 'city' AS type, 0 AS priority
                 FROM geographic_areas p JOIN geographic_areas c ON c.type='cbsa'
@@ -99,7 +105,7 @@ const worker = {
               ORDER BY priority,label LIMIT 8`, [`%${city.trim()}%`, state]);
           return Response.json({ query, results: result.rows });
         } finally { await client.end(); }
-      });
+      })();
     }
 
     if (url.pathname === "/api/aqi/history") {
@@ -124,6 +130,31 @@ const worker = {
         for (const day of days.rows) daysByYear[new Date(day.date).getUTCFullYear()].push(day);
         return Response.json({ data_source: { area: area.rows[0].name, type: "metro", source: currentSource }, days_by_year: daysByYear });
       } finally { await client.end(); }
+      });
+    }
+
+    if (url.pathname === "/api/pollutants/history") {
+      return cachedApiResponse(request, ctx, env.AQI_CACHE_VERSION || "1", 3_600, async () => {
+        const areaId = url.searchParams.get("location_id");
+        const startYear = Number(url.searchParams.get("start_year"));
+        const endYear = Number(url.searchParams.get("end_year"));
+        if (!areaId || !Number.isInteger(startYear) || !Number.isInteger(endYear) || endYear < startYear || endYear - startYear > 19) {
+          return new Response("location_id and a year range of up to 20 years are required", { status: 400 });
+        }
+        const client = new Client({ connectionString: env.HYPERDRIVE.connectionString });
+        await client.connect();
+        try {
+          const [area, measurements] = await Promise.all([
+            client.query("SELECT name, metadata FROM geographic_areas WHERE id=$1 AND type='monitor'", [areaId]),
+            client.query(`SELECT date::text, pollutant, value::float8 AS value, units, observation_count
+              FROM daily_pollutant_measurements WHERE area_id=$1 AND date >= make_date($2,1,1)
+              AND date < make_date($3 + 1,1,1) ORDER BY date, pollutant`, [areaId, startYear, endYear]),
+          ]);
+          if (!area.rowCount) return new Response("International monitor not found", { status: 404 });
+          const byYear = Object.fromEntries(Array.from({ length: endYear - startYear + 1 }, (_, index) => [startYear + index, [] as typeof measurements.rows]));
+          for (const row of measurements.rows) byYear[new Date(row.date).getUTCFullYear()].push(row);
+          return Response.json({ data_source: { area: area.rows[0].name, type: "monitor", source: area.rows[0].metadata?.source ?? "OpenAQ" }, measurements_by_year: byYear });
+        } finally { await client.end(); }
       });
     }
 
