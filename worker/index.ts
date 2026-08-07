@@ -147,7 +147,8 @@ const worker = {
           const [area, measurements] = await Promise.all([
             client.query("SELECT name, metadata FROM geographic_areas WHERE id=$1 AND type='monitor'", [areaId]),
             client.query(`SELECT date::text, pollutant, value::float8 AS value, units, observation_count
-              FROM daily_pollutant_measurements WHERE area_id=$1 AND date >= make_date($2,1,1)
+              FROM daily_pollutant_measurements WHERE area_id=$1 AND observation_count >= 6
+              AND date >= make_date($2,1,1)
               AND date < make_date($3 + 1,1,1) ORDER BY date, pollutant`, [areaId, startYear, endYear]),
           ]);
           if (!area.rowCount) return new Response("International monitor not found", { status: 404 });
