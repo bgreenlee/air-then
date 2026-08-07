@@ -213,7 +213,7 @@ export default function Home() {
     </section>
     <section className="explorer" id="explore">
       <div className="result-head"><div><p className="eyebrow">Search result</p><h2>{displayArea(dataArea)}</h2><p className="subtle">{locationType === "monitor" ? "International monitor" : "Metro area"} · {dataSource}</p><p className="resolution-note"><b>Why this source?</b> {locationType === "monitor" ? "Daily pollutant concentrations from a monitoring station." : isCurrentLocation ? "Your current location resolves to the nearest EPA metro area." : "This result has strong daily monitoring coverage."}</p></div><div className="year-controls"><button onClick={() => setYear(year - 1)} aria-label="Previous year"><ChevronLeft size={20} strokeWidth={1.8} aria-hidden="true"/></button><strong>{year}</strong><button onClick={() => setYear(year + 1)} disabled={year >= currentYear} aria-label="Next year"><ChevronRight size={20} strokeWidth={1.8} aria-hidden="true"/></button></div></div>
-      {locationType === "monitor" ? <InternationalView measurements={yearMeasurements} stats={pollutantStats}/> : <>
+      {locationType === "monitor" ? <InternationalView measurements={Object.values(measurements).flat()} displayYear={year} stats={pollutantStats}/> : <>
       <div className="metrics"><Metric value={stats.median} label="Median AQI" tone="good"/><Metric value={stats.max} label="Maximum AQI" tone="sensitive"/><Metric value={stats.gt50} label="Days above 50" tone="moderate"/><Metric value={stats.gt100} label="Days above 100" tone="unhealthy"/></div>
       <div className="chart-card"><div className="chart-heading"><div><p className="eyebrow">Daily AQI calendar</p><p>Each square is one day. Higher values mean greater health concern.</p></div></div><div className="calendar-wrap"><div className="month-labels">{months.map(m => <span key={m}>{m}</span>)}</div><div className="calendar" aria-label={`Daily AQI calendar for ${year}`}>{cells.map((d, i) => <div key={i} role={d ? "img" : undefined} tabIndex={d ? 0 : undefined} aria-label={d ? `${d.date}: ${d.aqi === null ? "No AQI reported" : `AQI ${d.aqi}, ${category(d.aqi)}, ${d.pollutant}`}` : undefined} onMouseEnter={(event) => d && setTooltip({ day: d, x: event.clientX, y: event.clientY })} onMouseMove={(event) => d && setTooltip({ day: d, x: event.clientX, y: event.clientY })} onMouseLeave={() => setTooltip(null)} onFocus={(event) => { if (d) { const box = event.currentTarget.getBoundingClientRect(); setTooltip({ day: d, x: box.left + box.width / 2, y: box.bottom }); } }} onBlur={() => setTooltip(null)} className={`day ${d ? bucket(d.aqi) : "empty"}`} style={d && d.aqi !== null ? { backgroundColor: aqiColor(d.aqi) } : undefined}/>)}</div></div><div className="legend"><span>Lower impact</span>{["good","moderate","sensitive","unhealthy","very-unhealthy","hazardous"].map(k => <i key={k} className={k}/>) }<span>Higher impact</span><i className="missing"/><span>No data</span></div></div>
       <div className="history-card"><div><p className="eyebrow">Historical view</p><p>Each strip condenses a full year into daily AQI. Select a year to inspect it above.</p></div><div className="history-timeline"><div className="history-months" aria-hidden="true">{months.map(month => <span key={month}>{month}</span>)}</div><div className="year-strips">{historicalYears.map(y => { const row = historicalDays[y]; return <button className={y === year ? "year-strip selected" : "year-strip"} onClick={() => setYear(y)} key={y} aria-label={`Show AQI calendar for ${y}`}><b>{y}</b><span className="year-ramp" style={row ? { backgroundImage: dailyGradient(fullYearDays(y, row)) } : undefined}/><em>{y === year ? "Viewing" : ""}</em></button>; })}</div></div></div>
@@ -224,15 +224,15 @@ export default function Home() {
   </main>;
 }
 
-function InternationalView({ measurements, stats }: { measurements: Measurement[]; stats: { pollutant: string; units: string; median: number; max: number; days: number }[] }) {
+function InternationalView({ measurements, displayYear, stats }: { measurements: Measurement[]; displayYear: number; stats: { pollutant: string; units: string; median: number; max: number; days: number }[] }) {
   const [hovered, setHovered] = useState<{ date: string; x: number; y: number } | null>(null);
   const byDate = new Map<string, Measurement[]>();
   for (const row of measurements) byDate.set(row.date, [...(byDate.get(row.date) ?? []), row]);
   const dates = measurements.length ? measurements.map((row) => row.date).filter((date, index, all) => all.indexOf(date) === index) : [];
   const firstDate = dates[0] ? new Date(`${dates[0]}T12:00:00Z`) : new Date();
   const year = firstDate.getUTCFullYear();
-  const [selectedYear, setSelectedYear] = useState(year);
-  useEffect(() => setSelectedYear(year), [year]);
+  const [selectedYear, setSelectedYear] = useState(displayYear);
+  useEffect(() => setSelectedYear(displayYear), [displayYear]);
   const calendar = Array.from({ length: 371 }, (_, index) => {
     const date = new Date(Date.UTC(selectedYear, 0, index + 1));
     return date.getUTCFullYear() === selectedYear ? date.toISOString().slice(0, 10) : null;
