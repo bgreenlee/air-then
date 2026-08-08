@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, ExternalLink, LocateFixed, Search } from "lucide-react";
+import { AirQualityCalendar, type CalendarDatum, fullYearDates, yearGradient } from "./air-quality-calendar";
 
 type Day = { date: string; aqi: number | null; pollutant: string | null; source?: string; data_status?: string };
 type Measurement = { date: string; pollutant: string; value: number; units: string; observation_count: number };
@@ -70,24 +71,10 @@ function demoDays(year: number): Day[] {
   return dates;
 }
 
-function dailyGradient(days: Day[]) {
-  const width = 100 / days.length;
-  return `linear-gradient(90deg, ${days.map((day, index) => {
-    const color = aqiColor(day.aqi);
-    const start = index * width;
-    const end = (index + 1) * width;
-    return `${color} ${Math.max(0, start - width * .18)}%, ${color} ${end + width * .18}%`;
-  }).join(", ")})`;
-}
-
-function fullYearDays(year: number, reportedDays: Day[]) {
-  const byDate = new Map(reportedDays.map((day) => [day.date, day]));
-  const dates: Day[] = [];
-  for (let date = new Date(Date.UTC(year, 0, 1)); date.getUTCFullYear() === year; date.setUTCDate(date.getUTCDate() + 1)) {
-    const key = date.toISOString().slice(0, 10);
-    dates.push(byDate.get(key) ?? { date: key, aqi: null, pollutant: null });
-  }
-  return dates;
+function aqiYearGradient(year: number, reportedDays: Day[]) {
+  const stripDays = new Map<string, CalendarDatum>();
+  for (const day of reportedDays) if (day.aqi !== null) stripDays.set(day.date, { date: day.date, color: aqiColor(day.aqi) });
+  return yearGradient(year, stripDays, ramp.missing);
 }
 
 function nearestCbsa(latitude: number, longitude: number) {
@@ -115,7 +102,6 @@ export default function Home() {
   const [dataArea, setDataArea] = useState("Loading metro area…");
   const [areaId, setAreaId] = useState<string | null>(null);
   const [isCurrentLocation, setIsCurrentLocation] = useState(false);
-  const [tooltip, setTooltip] = useState<{ day: Day; x: number; y: number } | null>(null);
   const [days, setDays] = useState<Day[]>([]);
   const [dataSource, setDataSource] = useState("Daily monitor aggregate");
   const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
@@ -193,11 +179,7 @@ export default function Home() {
   }), [historicalDays, historicalYears]);
   const trendScale = Math.max(100, ...annualTrends.flatMap((trend) => trend.p90 === null ? [] : [trend.p90]));
   const trendMaxDays = Math.max(1, ...annualTrends.map((trend) => trend.daysAbove100));
-  const dayByDate = new Map(days.map(day => [day.date, day]));
-  const cells = Array.from({ length: 371 }, (_, index) => {
-    const date = new Date(Date.UTC(year, 0, index + 1));
-    return date.getUTCFullYear() === year ? dayByDate.get(date.toISOString().slice(0, 10)) ?? { date: date.toISOString().slice(0, 10), aqi: null, pollutant: null } : null;
-  });
+  const calendarDays = new Map<string, CalendarDatum>(days.flatMap((day) => day.aqi === null ? [] : [[day.date, { date: day.date, color: aqiColor(day.aqi), details: [`AQI ${day.aqi} · ${category(day.aqi)} · ${day.pollutant}`] }]]));
   const yearMeasurements = measurements[year] ?? [];
   const pollutantStats = useMemo(() => Object.entries(Object.groupBy(yearMeasurements, (row) => row.pollutant)).map(([pollutant, rows]) => {
     const values = rows.map((row) => row.value).sort((a, b) => a - b);
@@ -219,35 +201,36 @@ export default function Home() {
     </section>
     <section className="explorer" id="explore">
       <div className="result-head"><div><p className="eyebrow">Search result</p><h2>{displayArea(dataArea)}</h2><p className="subtle">{locationType === "monitor" ? "International monitor" : "Metro area"} · {dataSource}</p><p className="resolution-note"><b>Why this source?</b> {locationType === "monitor" ? "Daily pollutant concentrations from a monitoring station." : isCurrentLocation ? "Your current location resolves to the nearest EPA metro area." : "This result has strong daily monitoring coverage."}</p></div><div className="year-controls"><button onClick={() => setYear(year - 1)} aria-label="Previous year"><ChevronLeft size={20} strokeWidth={1.8} aria-hidden="true"/></button><strong>{year}</strong><button onClick={() => setYear(year + 1)} disabled={year >= currentYear} aria-label="Next year"><ChevronRight size={20} strokeWidth={1.8} aria-hidden="true"/></button></div></div>
-      {locationType === "monitor" ? <InternationalView measurements={Object.values(measurements).flat()} displayYear={year} stats={pollutantStats}/> : <>
+      {locationType === "monitor" ? <InternationalView measurements={Object.values(measurements).flat()} displayYear={year} onYearChange={setYear} stats={pollutantStats}/> : <>
       <div className="metrics"><Metric value={stats.median} label="Median AQI" tone="good"/><Metric value={stats.max} label="Maximum AQI" tone="sensitive"/><Metric value={stats.gt50} label="Days above 50" tone="moderate"/><Metric value={stats.gt100} label="Days above 100" tone="unhealthy"/></div>
-      <div className="chart-card"><div className="chart-heading"><div><p className="eyebrow">Daily AQI calendar</p><p>Each square is one day. Higher values mean greater health concern.</p></div></div><div className="calendar-wrap"><div className="month-labels">{months.map(m => <span key={m}>{m}</span>)}</div><div className="calendar" aria-label={`Daily AQI calendar for ${year}`}>{cells.map((d, i) => <div key={i} role={d ? "img" : undefined} tabIndex={d ? 0 : undefined} aria-label={d ? `${d.date}: ${d.aqi === null ? "No AQI reported" : `AQI ${d.aqi}, ${category(d.aqi)}, ${d.pollutant}`}` : undefined} onMouseEnter={(event) => d && setTooltip({ day: d, x: event.clientX, y: event.clientY })} onMouseMove={(event) => d && setTooltip({ day: d, x: event.clientX, y: event.clientY })} onMouseLeave={() => setTooltip(null)} onFocus={(event) => { if (d) { const box = event.currentTarget.getBoundingClientRect(); setTooltip({ day: d, x: box.left + box.width / 2, y: box.bottom }); } }} onBlur={() => setTooltip(null)} className={`day ${d ? bucket(d.aqi) : "empty"}`} style={d && d.aqi !== null ? { backgroundColor: aqiColor(d.aqi) } : undefined}/>)}</div></div><div className="legend"><span>Lower impact</span>{["good","moderate","sensitive","unhealthy","very-unhealthy","hazardous"].map(k => <i key={k} className={k}/>) }<span>Higher impact</span><i className="missing"/><span>No data</span></div></div>
-      <div className="history-card"><div><p className="eyebrow">Historical view</p><p>Each strip condenses a full year into daily AQI. Select a year to inspect it above.</p></div><div className="history-timeline"><div className="history-months" aria-hidden="true">{months.map(month => <span key={month}>{month}</span>)}</div><div className="year-strips">{historicalYears.map(y => { const row = historicalDays[y]; return <button className={y === year ? "year-strip selected" : "year-strip"} onClick={() => setYear(y)} key={y} aria-label={`Show AQI calendar for ${y}`}><b>{y}</b><span className="year-ramp" style={row ? { backgroundImage: dailyGradient(fullYearDays(y, row)) } : undefined}/><em>{y === year ? "Viewing" : ""}</em></button>; })}</div></div></div>
+      <div className="chart-card"><div className="chart-heading"><div><p className="eyebrow">Daily AQI calendar</p><p>Each square is one day. Higher values mean greater health concern.</p></div></div><AirQualityCalendar year={year} days={calendarDays} ariaLabel={`Daily AQI calendar for ${year}`} months={months}/><div className="legend"><span>Lower impact</span>{["good","moderate","sensitive","unhealthy","very-unhealthy","hazardous"].map(k => <i key={k} className={k}/>) }<span>Higher impact</span><i className="missing"/><span>No data</span></div></div>
+      <div className="history-card"><div><p className="eyebrow">Historical view</p><p>Each strip condenses a full year into daily AQI. Select a year to inspect it above.</p></div><div className="history-timeline"><div className="history-months" aria-hidden="true">{months.map(month => <span key={month}>{month}</span>)}</div><div className="year-strips">{historicalYears.map(y => { const row = historicalDays[y]; return <button className={y === year ? "year-strip selected" : "year-strip"} onClick={() => setYear(y)} key={y} aria-label={`Show AQI calendar for ${y}`}><b>{y}</b><span className="year-ramp" style={row ? { backgroundImage: aqiYearGradient(y, row) } : undefined}/><em>{y === year ? "Viewing" : ""}</em></button>; })}</div></div></div>
       <div className="trend-card"><div className="trend-heading"><div><p className="eyebrow">Annual trend</p><p>Median and P90 AQI summarize each year; the bars count days above 100.</p></div><div className="trend-legend"><span><i className="median-dot"/>Median</span><span><i className="p90-dot"/>P90</span></div></div><div className="trend-plot" aria-label="Annual AQI trend">{annualTrends.map((trend) => { const medianTop = trend.median === null ? null : 100 - trend.median / trendScale * 100; const p90Top = trend.p90 === null ? null : 100 - trend.p90 / trendScale * 100; return <div className="trend-column" key={trend.year}><div className="trend-range-area">{medianTop !== null && p90Top !== null && <><span className="trend-range" style={{ top: `${p90Top}%`, height: `${Math.max(3, medianTop - p90Top)}%` }}/><i className="trend-p90" style={{ top: `${p90Top}%` }}/><i className="trend-median" style={{ top: `${medianTop}%` }}/></>}</div><div className="trend-bar-area"><span className="trend-bar" style={{ height: `${trend.daysAbove100 / trendMaxDays * 100}%` }}/></div><b>{trend.year}</b></div>; })}</div><div className="trend-axis"><span>P90 / median AQI</span><span>Days above 100</span></div></div></>}
     </section>
     <footer><span>AirThen is built from <a href="https://www.epa.gov/outdoor-air-quality-data" target="_blank" rel="noreferrer">EPA AirData</a> bulk files, <a href="https://openaq.org/" target="_blank" rel="noreferrer">OpenAQ</a> measurements, and Census geographic references.</span></footer>
-    {tooltip && <div className="calendar-tooltip" role="tooltip" style={{ left: tooltip.x + 14, top: tooltip.y + 14 }}><b>{new Date(`${tooltip.day.date}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</b><span>{tooltip.day.aqi === null ? "No AQI reported" : `AQI ${tooltip.day.aqi} · ${category(tooltip.day.aqi)} · ${tooltip.day.pollutant}`}</span></div>}
   </main>;
 }
 
-function InternationalView({ measurements, displayYear, stats }: { measurements: Measurement[]; displayYear: number; stats: { pollutant: string; units: string; median: number; max: number; days: number }[] }) {
-  const [hovered, setHovered] = useState<{ date: string; x: number; y: number } | null>(null);
+function InternationalView({ measurements, displayYear, onYearChange, stats }: { measurements: Measurement[]; displayYear: number; onYearChange: (year: number) => void; stats: { pollutant: string; units: string; median: number; max: number; days: number }[] }) {
   const byDate = new Map<string, Measurement[]>();
   for (const row of measurements) byDate.set(row.date, [...(byDate.get(row.date) ?? []), row]);
-  const dates = measurements.length ? measurements.map((row) => row.date).filter((date, index, all) => all.indexOf(date) === index) : [];
-  const firstDate = dates[0] ? new Date(`${dates[0]}T12:00:00Z`) : new Date();
-  const year = firstDate.getUTCFullYear();
-  const [selectedYear, setSelectedYear] = useState(displayYear);
-  useEffect(() => setSelectedYear(displayYear), [displayYear]);
-  const calendar = Array.from({ length: 371 }, (_, index) => {
-    const date = new Date(Date.UTC(selectedYear, 0, index + 1));
-    return date.getUTCFullYear() === selectedYear ? date.toISOString().slice(0, 10) : null;
-  });
+  const calendarDays = new Map<string, CalendarDatum>();
+  for (const date of fullYearDates(displayYear)) {
+    const rows = byDate.get(date) ?? [];
+    if (!rows.length) continue;
+    const band = Math.max(...rows.map((row) => internationalBand(row.pollutant, row.value)));
+    calendarDays.set(date, { date, color: internationalColors[Math.max(0, band - 1)], details: rows.map((row) => `${row.pollutant}: ${row.value.toFixed(1)} ${row.units} · ${row.observation_count} observations`) });
+  }
   const years = [...new Set(measurements.map((row) => Number(row.date.slice(0, 4))))].sort((a, b) => a - b);
   const yearStrip = (stripYear: number) => {
-    const days: string[] = [];
-    for (let date = new Date(Date.UTC(stripYear, 0, 1)); date.getUTCFullYear() === stripYear; date.setUTCDate(date.getUTCDate() + 1)) days.push(date.toISOString().slice(0, 10));
-    return `linear-gradient(90deg, ${days.map((date, index) => { const rows = byDate.get(date) ?? []; const band = rows.length ? Math.max(...rows.map((row) => internationalBand(row.pollutant, row.value))) : 0; const color = band ? internationalColors[band - 1] : ramp.missing; const start = index / days.length * 100; const end = (index + 1) / days.length * 100; return `${color} ${start}%, ${color} ${end}%`; }).join(", ")})`;
+    const stripDays = new Map<string, CalendarDatum>();
+    for (const date of fullYearDates(stripYear)) {
+      const rows = byDate.get(date) ?? [];
+      if (!rows.length) continue;
+      const band = Math.max(...rows.map((row) => internationalBand(row.pollutant, row.value)));
+      stripDays.set(date, { date, color: internationalColors[Math.max(0, band - 1)] });
+    }
+    return yearGradient(stripYear, stripDays, ramp.missing);
   };
   const internationalTrends = years.map((trendYear) => {
     const values = [...new Set(measurements.filter((row) => row.date.startsWith(`${trendYear}-`)).map((row) => row.date))].map((date) => Math.max(...(byDate.get(date) ?? []).map((row) => internationalBand(row.pollutant, row.value)), 0)).sort((a, b) => a - b);
@@ -257,9 +240,8 @@ function InternationalView({ measurements, displayYear, stats }: { measurements:
   const internationalMaxDays = Math.max(1, ...internationalTrends.map((trend) => trend.days));
   return <>
     <div className="metrics">{stats.map((stat) => <Metric key={stat.pollutant} value={`${stat.median.toFixed(1)} ${stat.units}`} label={`${stat.pollutant} median`} tone="good"/>)}<Metric value={measurements.length ? new Set(measurements.map((row) => row.date)).size : 0} label="Days with measurements" tone="moderate"/></div>
-    <div className="chart-card"><div className="chart-heading"><div><p className="eyebrow">Combined daily pollutant calendar</p><p>Each square uses the worse EEA-style concentration band among the reported pollutants. Hover a day for details.</p></div></div><div className="calendar-wrap"><div className="month-labels">{months.map(m => <span key={m}>{m}</span>)}</div><div className="calendar" aria-label={`Combined daily pollutant calendar for ${selectedYear}`}>{calendar.map((date, index) => { const rows = date ? byDate.get(date) ?? [] : []; const band = rows.length ? Math.max(...rows.map((row) => internationalBand(row.pollutant, row.value))) : 0; const color = rows.length ? internationalColors[Math.max(0, band - 1)] : undefined; return <div key={index} role={date ? "img" : undefined} tabIndex={rows.length ? 0 : undefined} aria-label={rows.length ? `${date}: ${rows.map((row) => `${row.pollutant} ${row.value.toFixed(1)} ${row.units}`).join(", ")}` : undefined} onMouseMove={(event) => date && rows.length && setHovered({ date, x: event.clientX, y: event.clientY })} onMouseLeave={() => setHovered(null)} onFocus={(event) => { if (date && rows.length) { const box = event.currentTarget.getBoundingClientRect(); setHovered({ date, x: box.left + box.width / 2, y: box.bottom }); } }} onBlur={() => setHovered(null)} className={`day ${date ? "" : "empty"}`} style={color ? { backgroundColor: color } : undefined}/>; })}</div></div><div className="legend"><span>Good</span>{internationalColors.map((color, index) => <i key={color} style={{ backgroundColor: color }} aria-label={`Band ${index + 1}`}/>)}<span>Extremely poor</span><i className="missing"/><span>No data</span></div></div>
-    {hovered && <div className="calendar-tooltip" role="tooltip" style={{ left: hovered.x + 14, top: hovered.y + 14 }}><b>{new Date(`${hovered.date}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</b>{(byDate.get(hovered.date) ?? []).map((row) => <span key={row.pollutant}>{row.pollutant}: {row.value.toFixed(1)} {row.units} · {row.observation_count} observations</span>)}</div>}
-    <div className="history-card"><div><p className="eyebrow">Historical view</p><p>Each strip condenses a year into daily combined pollutant levels.</p></div><div className="history-timeline"><div className="history-months" aria-hidden="true">{months.map(month => <span key={month}>{month}</span>)}</div><div className="year-strips">{years.map((stripYear) => <button className={stripYear === selectedYear ? "year-strip selected" : "year-strip"} onClick={() => { setSelectedYear(stripYear); setHovered(null); }} key={stripYear} aria-label={`Show combined pollutant calendar for ${stripYear}`}><b>{stripYear}</b><span className="year-ramp" style={{ backgroundImage: yearStrip(stripYear) }}/><em>{stripYear === selectedYear ? "Viewing" : ""}</em></button>)}</div></div></div>
+    <div className="chart-card"><div className="chart-heading"><div><p className="eyebrow">Combined daily pollutant calendar</p><p>Each square uses the worse EEA-style concentration band among the reported pollutants. Hover a day for details.</p></div></div><AirQualityCalendar year={displayYear} days={calendarDays} ariaLabel={`Combined daily pollutant calendar for ${displayYear}`} months={months}/><div className="legend"><span>Good</span>{internationalColors.map((color, index) => <i key={color} style={{ backgroundColor: color }} aria-label={`Band ${index + 1}`}/>)}<span>Extremely poor</span><i className="missing"/><span>No data</span></div></div>
+    <div className="history-card"><div><p className="eyebrow">Historical view</p><p>Each strip condenses a year into daily combined pollutant levels.</p></div><div className="history-timeline"><div className="history-months" aria-hidden="true">{months.map(month => <span key={month}>{month}</span>)}</div><div className="year-strips">{years.map((stripYear) => <button className={stripYear === displayYear ? "year-strip selected" : "year-strip"} onClick={() => onYearChange(stripYear)} key={stripYear} aria-label={`Show combined pollutant calendar for ${stripYear}`}><b>{stripYear}</b><span className="year-ramp" style={{ backgroundImage: yearStrip(stripYear) }}/><em>{stripYear === displayYear ? "Viewing" : ""}</em></button>)}</div></div></div>
     <div className="trend-card"><div className="trend-heading"><div><p className="eyebrow">Annual trend</p><p>Median and P90 summarize the EEA-style combined bands; bars count days above the midpoint.</p></div><div className="trend-legend"><span><i className="median-dot"/>Median band</span><span><i className="p90-dot"/>P90 band</span></div></div><div className="trend-plot" aria-label="Annual combined pollutant trend">{internationalTrends.map((trend) => { const medianTop = trend.median === null ? null : 100 - trend.median / internationalScale * 100; const p90Top = trend.p90 === null ? null : 100 - trend.p90 / internationalScale * 100; return <div className="trend-column" key={trend.year}><div className="trend-range-area">{medianTop !== null && p90Top !== null && <><span className="trend-range" style={{ top: `${p90Top}%`, height: `${Math.max(3, medianTop - p90Top)}%` }}/><i className="trend-p90" style={{ top: `${p90Top}%` }}/><i className="trend-median" style={{ top: `${medianTop}%` }}/></>}</div><div className="trend-bar-area"><span className="trend-bar" style={{ height: `${trend.days / internationalMaxDays * 100}%` }}/></div><b>{trend.year}</b></div>; })}</div><div className="trend-axis"><span>EEA-style P90 / median band</span><span>Days above midpoint</span></div></div>
     <div className="history-card"><p className="eyebrow">About this data</p><p>AirThen currently shows pollutant concentrations for international stations. AQI scales differ by country, so we don’t convert these measurements into the U.S. AQI scale.</p></div>
   </>;
