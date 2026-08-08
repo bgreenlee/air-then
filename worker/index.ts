@@ -85,18 +85,18 @@ const worker = {
                 SELECT c.id::text AS area_id,c.name,c.geoid,c.name || ', ' || COALESCE(c.metadata->>'country', 'International') AS label,
                   'monitor' AS type, CASE WHEN c.metadata->>'country' ILIKE $1 THEN -1 ELSE 0 END AS priority
                 FROM geographic_areas c
-                WHERE c.type='monitor' AND (c.search_document @@ websearch_to_tsquery('simple', $1) OR lower(c.name) LIKE lower($2) OR lower(c.metadata->>'country') LIKE lower($2))
+                WHERE c.type='monitor' AND (c.search_document @@ websearch_to_tsquery('simple', $1) OR immutable_unaccent(lower(c.name)) LIKE immutable_unaccent(lower($2)) OR immutable_unaccent(lower(c.metadata->>'country')) LIKE immutable_unaccent(lower($2)))
                   AND EXISTS (SELECT 1 FROM daily_pollutant_measurements d WHERE d.area_id=c.id)
                 UNION ALL
                 SELECT c.id::text AS area_id,c.name,c.geoid,
                   regexp_replace(p.name, ' (city|town|village|CDP)$', '', 'i') || ', ' || (p.metadata->>'state') || ' → ' || c.name AS label, 'city' AS type, 0 AS priority
                 FROM geographic_areas p JOIN geographic_areas c ON c.type='cbsa'
-                WHERE p.type='place' AND (p.search_document @@ websearch_to_tsquery('simple', $1) OR lower(p.name) LIKE lower($2)) AND ($3::text IS NULL OR p.metadata->>'state'=$3)
+                WHERE p.type='place' AND (p.search_document @@ websearch_to_tsquery('simple', $1) OR immutable_unaccent(lower(p.name)) LIKE immutable_unaccent(lower($2))) AND ($3::text IS NULL OR p.metadata->>'state'=$3)
                   AND c.geom IS NOT NULL AND ST_Covers(c.geom,p.centroid)
                   AND EXISTS (SELECT 1 FROM daily_aqi d WHERE d.area_id=c.id)
                 UNION ALL
                 SELECT c.id::text,c.name,c.geoid,c.name,'metro',1
-                FROM geographic_areas c WHERE c.type='cbsa' AND (c.search_document @@ websearch_to_tsquery('simple', $1) OR lower(c.name) LIKE lower($2))
+                FROM geographic_areas c WHERE c.type='cbsa' AND (c.search_document @@ websearch_to_tsquery('simple', $1) OR immutable_unaccent(lower(c.name)) LIKE immutable_unaccent(lower($2)))
                   AND EXISTS (SELECT 1 FROM daily_aqi d WHERE d.area_id=c.id)
               ), deduplicated AS (
                 SELECT DISTINCT ON (area_id) area_id,name,geoid,label,type,priority FROM matches
