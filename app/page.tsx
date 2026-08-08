@@ -245,9 +245,9 @@ function InternationalView({ measurements, displayYear, stats }: { measurements:
   });
   const years = [...new Set(measurements.map((row) => Number(row.date.slice(0, 4))))].sort((a, b) => a - b);
   const yearStrip = (stripYear: number) => {
-    const days = [...new Set(measurements.filter((row) => row.date.startsWith(`${stripYear}-`)).map((row) => row.date))];
-    const values = days.map((date) => Math.max(...(byDate.get(date) ?? []).map((row) => internationalBand(row.pollutant, row.value)), 0));
-    return days.length ? `linear-gradient(90deg, ${values.map((value, index) => { const color = internationalColors[Math.max(0, value - 1)] ?? internationalColors.at(-1); const start = index / values.length * 100; const end = (index + 1) / values.length * 100; return `${color} ${start}%, ${color} ${end}%`; }).join(", ")})` : undefined;
+    const days: string[] = [];
+    for (let date = new Date(Date.UTC(stripYear, 0, 1)); date.getUTCFullYear() === stripYear; date.setUTCDate(date.getUTCDate() + 1)) days.push(date.toISOString().slice(0, 10));
+    return `linear-gradient(90deg, ${days.map((date, index) => { const rows = byDate.get(date) ?? []; const band = rows.length ? Math.max(...rows.map((row) => internationalBand(row.pollutant, row.value))) : 0; const color = band ? internationalColors[band - 1] : ramp.missing; const start = index / days.length * 100; const end = (index + 1) / days.length * 100; return `${color} ${start}%, ${color} ${end}%`; }).join(", ")})`;
   };
   const internationalTrends = years.map((trendYear) => {
     const values = [...new Set(measurements.filter((row) => row.date.startsWith(`${trendYear}-`)).map((row) => row.date))].map((date) => Math.max(...(byDate.get(date) ?? []).map((row) => internationalBand(row.pollutant, row.value)), 0)).sort((a, b) => a - b);
