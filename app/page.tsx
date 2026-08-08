@@ -12,7 +12,13 @@ const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const ramp: Record<string, string> = { good: "#76c47f", moderate: "#f1ce54", sensitive: "#ef9b4f", unhealthy: "#d45c50", "very-unhealthy": "#8e618e", hazardous: "#7a3d32", missing: "#e8eeea" };
 const colorStops = [[0, "#76c47f"], [50, "#b5ce67"], [100, "#f1ce54"], [150, "#ef9b4f"], [200, "#d45c50"], [300, "#8e618e"], [500, "#7a3d32"]] as const;
 const internationalColors = ["#76c47f", "#b5ce67", "#f1ce54", "#ef9b4f", "#d45c50", "#8e618e"];
-const internationalBands: Record<string, number[]> = { pm10: [15, 45, 120, 195, 270], no2: [10, 25, 60, 100, 150] };
+const internationalBands: Record<string, number[]> = {
+  pm25: [5, 15, 50, 90, 140],
+  pm10: [15, 45, 120, 195, 270],
+  no2: [10, 25, 60, 100, 150],
+  o3: [60, 100, 120, 160, 180],
+  so2: [20, 40, 125, 190, 275],
+};
 const cbsas = [
   [47.6062, -122.3321, "Seattle–Tacoma–Bellevue CBSA"], [40.7128, -74.006, "New York–Newark–Jersey City CBSA"],
   [34.0522, -118.2437, "Los Angeles–Long Beach–Anaheim CBSA"], [41.8781, -87.6298, "Chicago–Naperville–Elgin CBSA"],
