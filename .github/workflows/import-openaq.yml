@@ -23,6 +23,10 @@ permissions:
 
 jobs:
   import:
+    strategy:
+      fail-fast: false
+      matrix:
+        iso: ${{ fromJSON(github.event_name == 'schedule' && '["FR","CA"]' || format('["{0}"]', inputs.iso)) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,7 +41,7 @@ jobs:
           OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
         run: |
           year="$(date -u +%Y)"
-          iso="${{ inputs.iso || 'FR' }}"
+          iso="${{ matrix.iso }}"
           start_year="${{ inputs.start_year || '' }}"
           end_year="${{ inputs.end_year || '' }}"
           if [ -z "$start_year" ]; then start_year="$year"; fi
