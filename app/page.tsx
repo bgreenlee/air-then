@@ -1,13 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
-import {
-  ChevronLeft,
-  ChevronRight,
-  ExternalLink,
-  LocateFixed,
-  Search,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, LocateFixed, Search } from "lucide-react";
 import {
   AirQualityCalendar,
   type CalendarDatum,
@@ -36,15 +31,6 @@ type SearchResult = {
   type?: "city" | "metro" | "monitor";
 };
 
-const palette = [
-  "",
-  "good",
-  "moderate",
-  "sensitive",
-  "unhealthy",
-  "very-unhealthy",
-  "hazardous",
-];
 const months = [
   "Jan",
   "Feb",
@@ -92,37 +78,9 @@ const internationalBands: Record<string, number[]> = {
   o3: [60, 100, 120, 160, 180],
   so2: [20, 40, 125, 190, 275],
 };
-const cbsas = [
-  [47.6062, -122.3321, "Seattle–Tacoma–Bellevue CBSA"],
-  [40.7128, -74.006, "New York–Newark–Jersey City CBSA"],
-  [34.0522, -118.2437, "Los Angeles–Long Beach–Anaheim CBSA"],
-  [41.8781, -87.6298, "Chicago–Naperville–Elgin CBSA"],
-  [29.7604, -95.3698, "Houston–The Woodlands–Sugar Land CBSA"],
-  [33.749, -84.388, "Atlanta–Sandy Springs–Alpharetta CBSA"],
-  [37.7749, -122.4194, "San Francisco–Oakland–Berkeley CBSA"],
-  [42.3601, -71.0589, "Boston–Cambridge–Newton CBSA"],
-] as const;
 // Keep the initial render deterministic: the Cloudflare Worker may expose an
 // epoch clock during SSR, while the browser has the actual current date.
 const currentYear = 2026;
-const today = "2026-08-05";
-
-function bucket(aqi: number | null) {
-  if (aqi === null) return "missing";
-  return palette[
-    aqi <= 50
-      ? 1
-      : aqi <= 100
-        ? 2
-        : aqi <= 150
-          ? 3
-          : aqi <= 200
-            ? 4
-            : aqi <= 300
-              ? 5
-              : 6
-  ];
-}
 
 function category(aqi: number | null) {
   if (aqi === null) return "Not reported";
@@ -166,38 +124,6 @@ function internationalBand(pollutant: string, value: number) {
     : 0;
 }
 
-function demoDays(year: number): Day[] {
-  const dates: Day[] = [];
-  for (
-    let d = new Date(`${year}-01-01T12:00:00Z`);
-    d.getUTCFullYear() === year;
-    d.setUTCDate(d.getUTCDate() + 1)
-  ) {
-    const n = Math.floor((d.getTime() / 86400000 + year * 11) % 29);
-    const summer = d.getUTCMonth() >= 5 && d.getUTCMonth() <= 8;
-    const futureDate =
-      year === currentYear && d.toISOString().slice(0, 10) > today;
-    const aqi =
-      futureDate || n === 0
-        ? null
-        : Math.max(
-            14,
-            Math.round(
-              31 +
-                Math.sin(d.getUTCDate() / 3) * 13 +
-                (summer ? 21 : 0) +
-                (n === 6 ? 62 : 0),
-            ),
-          );
-    dates.push({
-      date: d.toISOString().slice(0, 10),
-      aqi,
-      pollutant: aqi && aqi > 55 ? "Ozone" : "PM2.5",
-    });
-  }
-  return dates;
-}
-
 function aqiYearGradient(year: number, reportedDays: Day[]) {
   const stripDays = new Map<string, CalendarDatum>();
   for (const day of reportedDays)
@@ -206,29 +132,8 @@ function aqiYearGradient(year: number, reportedDays: Day[]) {
   return yearGradient(year, stripDays, ramp.missing);
 }
 
-function nearestCbsa(latitude: number, longitude: number) {
-  return cbsas.reduce(
-    (nearest, cbsa) => {
-      const distance = (cbsa[0] - latitude) ** 2 + (cbsa[1] - longitude) ** 2;
-      return distance < nearest.distance
-        ? { name: cbsa[2], distance }
-        : nearest;
-    },
-    { name: cbsas[0][2], distance: Infinity },
-  ).name;
-}
-
 function displayArea(name: string) {
   return name.replace(/\s+CBSA$/, "");
-}
-
-function resolveCbsa(query: string) {
-  const normalized = query.toLowerCase();
-  if (normalized.includes("981")) return cbsas[0][2];
-  const match = cbsas.find(([, , name]) =>
-    name.toLowerCase().split("–")[0].includes(normalized.split(",")[0].trim()),
-  );
-  return match?.[2] ?? cbsas[0][2];
 }
 
 export default function Home() {
@@ -238,7 +143,6 @@ export default function Home() {
   const [dataArea, setDataArea] = useState("Loading metro area…");
   const [areaId, setAreaId] = useState<string | null>(null);
   const [isCurrentLocation, setIsCurrentLocation] = useState(false);
-  const [days, setDays] = useState<Day[]>([]);
   const [dataSource, setDataSource] = useState("Daily monitor aggregate");
   const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
   const [searchFocused, setSearchFocused] = useState(false);
@@ -253,6 +157,10 @@ export default function Home() {
   const [measurements, setMeasurements] = useState<
     Record<number, Measurement[]>
   >({});
+  const days = useMemo(
+    () => historicalDays[year] ?? [],
+    [historicalDays, year],
+  );
 
   function selectLocation(result: SearchResult) {
     const label = result.label ?? result.name ?? "Metro area";
@@ -282,10 +190,7 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (!searchFocused || query.trim().length < 2) {
-      setSuggestions([]);
-      return;
-    }
+    if (!searchFocused || query.trim().length < 2) return;
     const timer = window.setTimeout(() => {
       void fetch(`/api/locations/search?q=${encodeURIComponent(query)}`)
         .then((response) => (response.ok ? response.json() : { results: [] }))
@@ -296,10 +201,29 @@ export default function Home() {
   }, [query, searchFocused]);
 
   useEffect(() => {
-    void resolveLocation("Seattle").catch(() => {
-      setDataArea("AQI data unavailable");
-      setDays([]);
-    });
+    let cancelled = false;
+    void fetch("/api/locations/search?q=Seattle")
+      .then((response) =>
+        response.ok
+          ? response.json()
+          : Promise.reject(new Error("Location search unavailable")),
+      )
+      .then((payload) => {
+        if (cancelled) return;
+        const result: SearchResult | undefined = payload.results?.[0];
+        if (!result) throw new Error("Seattle AQI data unavailable");
+        const label = result.label ?? result.name ?? "Seattle, WA";
+        setDataArea(label.split(" → ").at(-1) ?? label);
+        setAreaId(result.area_id);
+        setLocationType(result.type === "monitor" ? "monitor" : "aqi");
+        setQuery(label);
+      })
+      .catch(() => {
+        if (!cancelled) setDataArea("AQI data unavailable");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
   useEffect(() => {
     if (!areaId || locationType !== "aqi") return;
@@ -359,9 +283,6 @@ export default function Home() {
       cancelled = true;
     };
   }, [areaId, locationType, historicalYears]);
-  useEffect(() => {
-    setDays(historicalDays[year] ?? []);
-  }, [historicalDays, year]);
   const stats = useMemo(() => {
     const values = days
       .flatMap((d) => (d.aqi === null ? [] : [d.aqi]))
@@ -418,35 +339,37 @@ export default function Home() {
           ],
     ),
   );
-  const yearMeasurements = measurements[year] ?? [];
-  const pollutantStats = useMemo(
-    () =>
-      Object.entries(
-        Object.groupBy(yearMeasurements, (row) => row.pollutant),
-      ).map(([pollutant, rows]) => {
-        const values = rows.map((row) => row.value).sort((a, b) => a - b);
-        return {
+  const pollutantStats = useMemo(() => {
+    const yearMeasurements = measurements[year] ?? [];
+    return Object.entries(
+      Object.groupBy(yearMeasurements, (row) => row.pollutant),
+    ).flatMap(([pollutant, rows]) => {
+      if (!rows?.length) return [];
+      const values = rows.map((row) => row.value).sort((a, b) => a - b);
+      return [
+        {
           pollutant,
           units: rows[0].units,
           median: values[Math.floor(values.length / 2)],
           max: Math.max(...values),
           days: new Set(rows.map((row) => row.date)).size,
-        };
-      }),
-    [yearMeasurements],
-  );
+        },
+      ];
+    });
+  }, [measurements, year]);
 
   return (
     <main>
       <nav>
         <div className="brand-block">
           <a className="brand" href="#top">
-            <img
+            <Image
               className="brand-mark"
-              width="28"
-              height="28"
+              width={28}
+              height={28}
               src="/airthen-mark.svg"
               alt=""
+              priority
             />
             AirThen
           </a>
@@ -460,6 +383,8 @@ export default function Home() {
             rel="noreferrer"
             aria-label="AirThen on GitHub"
           >
+            {/* GitHub's brand mark is not part of the Lucide icon set. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="https://github.githubassets.com/favicons/favicon.svg"
               alt=""
@@ -504,7 +429,11 @@ export default function Home() {
               onBlur={() =>
                 window.setTimeout(() => setSearchFocused(false), 150)
               }
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value;
+                setQuery(value);
+                if (value.trim().length < 2) setSuggestions([]);
+              }}
               placeholder="City or ZIP code"
             />
             <button

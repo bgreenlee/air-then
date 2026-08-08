@@ -20,7 +20,7 @@ for migration in supabase/migrations/*.sql; do
     continue
   fi
   echo "Applying: $filename"
-  psql "$DATABASE_URL" --set ON_ERROR_STOP=1 --file "$migration"
+  psql "$DATABASE_URL" --set ON_ERROR_STOP=1 --single-transaction --file "$migration"
   psql "$DATABASE_URL" --set ON_ERROR_STOP=1 \
     --command "INSERT INTO clearskies_migrations (filename) VALUES ('$escaped_filename')"
 done
