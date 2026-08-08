@@ -469,8 +469,8 @@ export default function Home() {
       </nav>
       <section className="hero" id="top">
         <p className="intro">
-          Explore daily AQI records for cities, ZIP codes, and metro areas
-          across the U.S., Canada, and France.
+          Daily air quality records for cities and metro areas across the U.S.,
+          Canada, and France.
         </p>
         <div className="search-area">
           <form
